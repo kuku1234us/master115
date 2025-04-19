@@ -1,0 +1,1226 @@
+
+                <div class="wrap-vflow">
+                        <div class="top-vflow default-topheader" id="js_top_panel_box">
+                <div class="left-tvf" rel="left_tvf" style="">
+                    <div style="display: none;" rel="page_top_btn">
+                       <!--  <a href="javascript:;" class="button" data-dropdown-tab="upload_btn_add_dir" menu="upload"><i class="icon-operate ifo-upload"></i><i class="ibco-arrow-solid"></i></a>-->
+                                            
+                       
+                        <div class="clp-box">
+                                <a href="javascript:;" class="expand" rel="show_left_side_btn"><i class="icon-telescoping it-expand"></i></a>
+                                <div class="common-little-pop clp-mini">显示边栏</div>
+                        </div>
+                    </div>
+                   
+
+                    <!-- 上传 -->
+                    <a href="javascript:;" class="button" data-dropdown-tab="upload_btn_add_dir" menu="upload"><i class="icon-operate ifo-upload"></i><span>上传</span><i class="ibco-arrow-solid"></i></a> 
+
+
+                    <a href="javascript:;" class="button btn-line" data-dropdown-tab="create_new_add_dir" menu="create_word"><i class="icon-operate ifo-add"></i><span>新建</span><i class="ibco-arrow-solid"></i></a>
+                    <!-- 链接任务 -->
+<!--                    <a href="javascript:;"  class="button btn-line btn-upload" menu="offline_task"><i class="icon-operate ifo-linktask"></i><span>链接任务</span><em style="display:none;" class="num-dot"></em></a>-->
+
+
+                    
+                    <div class="popup-box" style="top: 67px;right: 10px;" data-dropdown-content="task" id="js_task_pupup_content">
+                        <div class="upload-list-file" style="width: 600px;">
+                            <div class="top-ulf">
+                                <div class="navigation-sup">
+                                    
+                                    <a href="javascript:;" task_popup="download">
+                                        <span>云下载</span>
+                                        <em task_popup="red_dot" class="num-dot" style="display: none;"></em>
+                                    </a>
+                                </div>
+                                <div class="top-side-ulf">
+                                    <a href="//115.com/?ct=report&amp;rules=1&amp;gift_code=yundown" target="_blank" class="btn-ulf btn-ulf-led" id="js_yundown_report" style="display: none;">
+                                        <span>举报</span>
+                                    </a>
+                                    <a href="javascript:;" class="btn-ulf" task_popup="refresh">
+                                        <span>刷新</span>
+                                    </a>
+                                    <a href="javascript:;" class="btn-ulf" data-dropdown-tab="task_more">
+                                        <span>清空</span>
+                                        <i class="iub-arrow"></i>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="main-ulf">
+                                <div class="list-ulf">
+                                    
+                                    <ul task_popup="list_down" style="display: none;">
+                                    </ul>
+                                    <div class="container-empty" task_popup="empty" style="display: none;">
+                                        <i class="icon-empty"></i>
+                                        <p>暂无记录</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bottom-vflow" task_rel="page_warp">
+
+                                <div class="month-quota-wrap">
+                                    <span task_rel="quota"></span>
+                                    <div class="help">
+                                        <a href="javascript:;" style="display: none;" task_rel="help">!</a>
+                                        <div class="context-menu" style="display: none;bottom: 30px;left: -87px;" task_rel="quota_info_box">
+                                            <div class="month-quota">
+                                                <div class="quota-head">
+                                                    <div class="title">本月配额明细</div>
+                                                    <a href="//115.com/115115/T416290.html" target="_blank" class="head-help"></a>
+                                                    <div class="head-cell">
+                                                        <ul>
+                                                            <li><div>配额类型</div><div>本项剩余/总配额</div></li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                                <div class="quota-wrap" task_rel="quota_info">
+
+                                                </div>
+                                                <div class="quota-bottom" task_rel="quota_surplus"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- <div class="pagination" task_rel="quota" style="position: absolute;"></div> -->
+                                <div class="pagination">
+                                    <div class="con">
+                                        <!-- <div class="page-amount">共<em task_popup="count">0</em>个</div> -->
+                                        <div class="page-links" task_popup="pager" style="display: none;padding-right: 0px;">
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="context-menu menu-upward" style="top: 70px; right: 10px; display: none;" data-dropdown-content="task_more">
+                            <em class="arrow-position" style="right: 20px;"><i class="arrow"></i><s class="arrow"></s></em>
+                            <div class="cell">
+                                <ul>
+                                    <li>
+                                        <a href="javascript:;" task_more="clear_done">清空已完成</a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:;" task_more="clear_fail">清空已失败</a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:;" task_more="clear_ing">清空进行中</a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:;" task_more="clear_all">清空全部</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="context-menu" data-dropdown-content="upload_btn_add_dir" style="top: 52px; left: 22px; display: none;">
+                        <div class="cell-icon">
+                            <a href="javascript:;" menu="upload"><i class="icon-operate ifo-upload"></i><span>上传文件</span></a>
+                            <a href="javascript:;" menu="folder_upload"><i class="icon-operate ifo-uploaddir"></i><span>上传文件夹</span></a>
+                            <a href="javascript:;" menu="offline_task"><i class="icon-operate ifo-linktask"></i><span>云下载</span></a>
+                           <!-- <a href="javascript:;" menu="add_dir"><i class="icon-operate ifo-newdir"></i><span>新建文件夹</span></a> -->
+                        </div>
+                    </div>
+
+                    <div class="context-menu" data-dropdown-content="create_new_add_dir" style="top: 52px; left: 128px; display: none;">
+                        <div class="cell-icon">
+                            <a href="javascript:;" menu="add_dir"><i class="file-type tp-folder"></i><span>文件夹</span></a>
+                            <a href="javascript:;" menu="create_word"><i class="file-type tp-docx"></i><span>Word文档(.docx)</span></a>
+                            <a href="javascript:;" menu="create_excel"><i class="file-type tp-xlsx"></i><span>Excel表格(.xlsx)</span></a>
+                            <a href="javascript:;" menu="create_ppt"><i class="file-type tp-pptx"></i><span>PPT文稿(.pptx)</span></a>
+                            <!-- <a href="javascript:;" menu="add_dir"><i class="icon-operate ifo-newdir"></i><span>新建文件夹</span></a> -->
+                        </div>
+                    </div>
+
+
+
+
+
+
+                    <a href="javascript:;" id="js_filter_btn" data-dropdown-tab="more" class="button btn-line"><i class="icon-operate ifo-filter"></i><span>筛选</span></a>
+
+
+                    <!-- 筛选状态 -->
+                    <div class="panel-btn-sort" id="js_filter_status" style="display: none;">
+                        <a href="javascript:;" data-dropdown-tab="more" class="button btn-gray">
+                            <span id="js_filter_type"></span>
+                        </a>
+                        <div class="sort-box" id="js_filter_suffix">
+                        </div>
+                        <div class="popup-box" id="js_filter_suffix_popup" style=" top: 55px; ">
+                            <div class="filter-details">
+                            </div>
+                        </div>
+                        <a href="javascript:;" class="button" menu="quit_filter">
+                            <i class="icon-sort-back"></i><span>退出筛选</span>
+                        </a>
+                    </div>
+                                            <!-- 新建文件夹 -->
+                        <!-- <a href="javascript:;" class="button btn-line" menu="add_dir"><i class="icon-operate ifo-newdir"></i><span>新建文件夹</span></a> -->
+
+                        <div class="panel-btn-model" id="js-panel_model_switch">
+                            <a href="javascript:;" class="item selected hover" menu="top_display" val="list"><i class="icon-file-model ifm-list"></i><span>列表模式</span></a>
+                            <a href="javascript:;" class="item" menu="top_display" val="view_large"><i class="icon-file-model ifm-thumb"></i><span>缩略图模式</span></a>
+                            <!--                        <a href="javascript:;" class="item"><i class="icon-file-model ifm-column"></i><span>多栏模式</span></a>-->
+                            <!--                        <a href="javascript:;" class="item"><i class="icon-file-model ifm-pic"></i><span>大图模式</span></a>-->
+                        </div>
+                                         <div class="more-box" data-dropdown-tab="left_more_menu">
+                            <a href="javascript:;" class="button btn-line"><i class="ibco-more"></i></a>
+                        </div>
+                    <!-- // -->
+
+
+                    
+                    <div class="top-file-path" id="js_fake_path" style="display: none;">
+                        <!--                <div class="checkbox" menu="file_check_all"></div>-->
+                        <div class="file-path" rel="fake_path">
+
+                        </div>
+                        <div class="desc" rel="js_selected_file_desc" style="display: none;"></div>
+                    </div>
+                    <!-- // -->
+
+                    <div class="panel-slide-labels" id="js_file_category_box">
+                        <div class="box" rel="category_box"></div>
+                        <a href="javascript:;" rel="more" class="button btn-light more" style="display: none;"><span>更多</span><i class="ibco-arrow-solid"></i></a>
+                    </div>
+
+                    <div class="context-menu menu-regular mr-autowidth" id="js_file_category_more" style="top: 52px; left: 30px; display: none; max-height: calc(100vh - 100px); overflow: auto;">
+                        <div class="cell" rel="list"></div>
+                    </div>
+
+
+                </div>
+                <div class="left-tvf" rel="left_tvf_for_other" style="display:none;">
+                    <!-- 接收、浏览、星标 -->
+                    <a href="javascript:;" rel="back_btn" menu="open" cid="0" aid="1" class="button btn-light with-rightline" style="display: none;">
+                        <i class="ibco-arrowback"></i>
+                    </a>
+                    <div class="navigation-sup" id="js_panel_guide" style="display: ;">
+                        <a menu="open" dir="recive" aid="1" id="js_recv_history_btn" href="javascript:;" style="display: none;"><span>接收</span></a>
+                        <a rel="share_save" href="/?ct=public_share&amp;ac=save" style="display: none;"><span>转存</span></a>
+                        <a rel="my_share" href="/?ct=public_share&amp;ac=my" style="display: none;"><span>已分享</span></a>
+                        <a rel="history" href="/?ct=file&amp;ac=userfile&amp;is_wl_tpl=1&amp;show_looked=1" style="display: none;"><span>浏览</span></a>
+                        <a menu="get_star" href="javascript:;" style="display: none;"><span>星标</span></a>
+                    </div>
+                    <script type="text/javascript">
+                        $(function() {
+                            if(!top.ISOPENSHARE) {
+                                $('[rel="share_save"]').remove();
+                            }
+                        })
+                    </script>
+                </div>
+                <div class="left-tvf" rel="left_tvf_for_rb" style="display:none;">
+                    <div class="clp-box" rel="remove_box_top_btn" style="display: none;">
+                        <a href="javascript:;" class="expand" rel="open_transfer_left"><i class="icon-telescoping it-expand"></i></a>
+                        <div class="common-little-pop clp-mini">显示边栏</div>
+                    </div>
+                    <!-- 接收、浏览、星标 -->
+                    <a href="javascript:;" rel="back_btn" rel_btn="rb_back_btn" menu="open" cid="-1" aid="1" class="button btn-light with-rightline" style="display: ;">
+                        <i class="ibco-arrowback"></i>
+                    </a>
+                    <div class="title">
+                    回收站
+                    <span class="helptips">
+                        <i class="icon-help"></i>
+                        <div class="common-little-pop clp-justify-left clp-bottom">回收站仍占用网盘的空间容量哦，请及时清理。</div>
+                    </span></div>
+                </div>
+                <div class="left-tvf" rel="left_tvf_for_inframe" style="display: none;">
+                    <div class="navigation-headline" style="display: none" id="js_starlist_guide_title">星标</div>
+                    <!-- 面包屑begin -->
+                    <div class="top-file-path">
+                        <!--                        <div class="checkbox" menu="file_check_all"></div>-->
+                        <div class="file-path" rel="page_local"><a class="folder" href="javascript:;" menu="open" rel="item" cate_name="根目录" file_type="0" type="show_title" aid="1" cid="0" titletext="根目录"><span><s class="icon-home"></s>根目录</span><i style="cursor: pointer; display:block;" btn="arrow_btn">›</i></a><a class="folder" href="javascript:;" menu="open" rel="item" cate_name="云下载" file_type="0" type="show_title" aid="1" cid="417965119134480442" titletext="云下载"><span>云下载</span><i style="cursor: pointer; display:block;" btn="arrow_btn">›</i></a><a class="folder" href="javascript:;" type="show_title" onclick="if(!Main.ReInstance({type:'', star:'', is_q: '', is_share:''})){window.location.reload();}" titletext="www.UIndex.org    -    Captain.America.Brave.New.World.2025.PROPER.1080p.WEB.h264-ETHEL"><span>www.UIndex.org    -    Captain.America.Brave.New.World.2025.PROPER.1080p.WEB.h264-ETHEL</span></a></div>
+                        <div class="desc" rel="js_selected_file_desc" style="display: none;"></div>
+                    </div>
+                    <div class="visible-model" rel="hideen_mode_icon" style="top:19px;right:60px;display: none;"><i></i><span>隐藏模式</span></div>
+                </div>
+                <div class="right-tvf" rel="right_tvf" style="">
+
+
+
+
+
+                    <!-- 上传 -->
+                    <a href="javascript:;" class="button btn-linear-blue" style="display: none;" id="js_upload_btn" data-dropdown-tab="upload">
+                        <i class="ibco-add"></i>
+                        <span>新文件</span>
+                        <i class="ibco-arrow"></i>
+                    </a>
+                    <div class="popup-box" style="top: 65px; display: none;" data-dropdown-content="upload">
+                        <div class="list-launch-type-file">
+                            <a href="javascript:;" menu="_upload"><i class="illtf-upload"></i><span>上传文件</span></a>
+                            <a href="javascript:;" menu="add_dir"><i class="illtf-newdir"></i><span>新建文件夹</span></a>
+                            <a href="javascript:;" menu="offline_task"><i class="illtf-offline"></i><span>云下载</span></a>
+                            <a href="javascript:;" menu="file_feed_back" style="display: none;"><i class="illtf-feedback"></i><span>我要反馈</span></a>
+                            <!-- <a href="javascript:;"><i class="illt-cloud"></i><span>115文件</span></a> -->
+                        </div>
+                    </div>
+                    <!-- // -->
+<!--                    <a href="javascript:;" class="button btn-line btn-upload" data-dropdown-tab="task" id="js_task_pupup_btn" file_dialog_menu="upload" style="display: none;">-->
+
+
+
+                    <div class="invisible-mode-exit" style="display: none;" id="js_invisible_line" data-dropdown-tab="more">
+                        <!-- <a href="javascript:;" menu="hide_dense_file"> -->
+                        <a href="javascript:;">
+                            <i></i><span>退出隐藏模式</span>
+                        </a>
+                    </div>
+
+                </div>
+                <div class="right-tvf" rel="right_tvf_for_star" style="display: none;">
+
+                </div>
+                <!-- 顶部操作栏 -->
+                <div class="list-operate lo-right" id="js_operate_box" style="left: 0px; display: none;"><ul><li menu="delete"><i class="icon-operate ifo-remove"></i><span>删除</span></li><li menu="attribute"><i class="icon-operate ifo-prop"></i><span>属性</span></li></ul><a href="javascript:;" class="button btn-line btn-cancel" btn="nocheck"><span>取消</span></a></div>
+                <!-- // -->
+                <!-- 回收站文案 -->
+                <div style="display: none;margin-right: 40px;" class="right-tvf" id="js_rb_txt">
+                    <span class="txt-desc" style="margin-right: 20px;display: none" txt_for="vip">文件保留30天后自动删除</span>
+                    <span class="txt-desc" style="display: none;cursor: pointer;" txt_for="novip">文件保留15天后自动删除。<em class="txt-blue" onclick="window.open('//vip.115.com/?vip_type=year')">升级VIP</em>延长至30天</span>
+                    <a href="javascript:;" menu="clear" class="button btn-line"><span>清空回收站</span></a>
+                    <a href="https://115.com/?mode=my_set&amp;nav=safe&amp;open=forgot_superpwd" class="button btn-line" target="_blank"><span>设置回收站密码</span></a>
+                </div>
+                <!-- // -->
+            </div>
+            <div class="top-vflow list-topheader" id="js_top_header_file_path_box" style="">
+                <!-- 文件路径 -->
+                <div class="top-file-path">
+                    <!-- 文件路径 -->
+                    <div class="file-path" rel="header_page_local"><a class="folder" href="javascript:;" menu="open" rel="item" cate_name="根目录" file_type="0" type="show_title" aid="1" cid="0" titletext="根目录"><span><s class="icon-home"></s>根目录</span><i style="cursor: pointer; display:block;" btn="arrow_btn">›</i></a><a class="folder" href="javascript:;" menu="open" rel="item" cate_name="云下载" file_type="0" type="show_title" aid="1" cid="417965119134480442" titletext="云下载"><span>云下载</span><i style="cursor: pointer; display:block;" btn="arrow_btn">›</i></a><a class="folder" href="javascript:;" type="show_title" onclick="if(!Main.ReInstance({type:'', star:'', is_q: '', is_share:''})){window.location.reload();}" titletext="www.UIndex.org    -    Captain.America.Brave.New.World.2025.PROPER.1080p.WEB.h264-ETHEL"><span>www.UIndex.org    -    Captain.America.Brave.New.World.2025.PROPER.1080p.WEB.h264-ETHEL</span></a></div>
+                </div>
+                <!-- title提示 -->
+                <div class="common-little-pop clp-justify-left" id="title-wrap" style="display:none;">
+                    <i class="arrow" style="left: 10px;"></i>
+                    <span id="title_text"></span>
+                </div>
+                <!-- 箭头向下时打开弹框下拉文件列表 -->
+                <div class="context-menu cm-folder-more" style="display: none; top: 100%;" id="select_box">
+                    <div class="cell-icon">
+                    </div>
+                </div>
+                <!-- 新建文件夹按钮 -->
+                <div class="top-file-newdir" id="js_path_add_dir" style="display: none">
+                    <a href="javascript:;" menu="add_dir"><i class="icon-newdir"></i><span>新建文件夹</span></a>
+                    <div class="common-little-pop clp-justify-left" style="z-index:100000;" id="js_path_add_popup"><span>在当前位置创建一个文件夹</span></div>
+                </div>
+                <!-- 粘贴文件 -->
+                <div class="panel-btn-paste" style="display: none;" id="js_paste_btn">
+                    <a href="javascript:;" class="button" rel="copy_paste">
+                        <span>粘贴文件</span>
+                    </a>
+                    <a href="javascript:;" class="button btn-canel" rel="copy_cancel">
+                        <i class="icon-del"></i>
+                        <s>取消</s>
+                    </a>
+                </div>
+                <!-- // -->
+                <div class="desc" rel="js_selected_file_desc" style="display: none;"></div>
+                            </div>
+                        <div id="js_context_menu_box">
+                <div class="context-menu" data-dropdown-content="left_more_menu" style="top: 52px; display: none;">
+                    <div class="cell-icon">
+                        <a href="/?ct=rb&amp;is_wl_tpl=1" rel="left_bar_rb_btn"><i class="icon-operate ifo-remove"></i><span>回收站</span></a>
+                        <!-- 2023年8月15号 与产品确认暂时隐藏 -->
+                        <!-- <a href="//life.115.com/lifetime?mode=lifeindex" target="_top"><i class="icon-operate ifo-recently"></i><span>最近</span></a> -->
+                        <a href="javascript:;" menu="goto_same"><i class="icon-operate ifo-delsame"></i><span>文件排重</span></a>
+                        <a href="/?ac=user_report" rel="data_report_more_button"><i class="icon-operate ifo-datareport"></i><span>数据报告</span></a>
+                        <a href="/?tab=file_set&amp;mode=wangpan" target="_top" data-nav="file_set" class="link-setting"><i class="icon-operate ifo-manageclassify"></i><s>快捷入口管理</s></a>
+                        <a href="javascript:;" menu="file_setting"><i class="icon-operate ifo-advanced-setting"></i><span>高级功能</span></a>
+                        <a href="javascript:;" menu="show_dense_file"><i class="icon-operate ifo-hiddenmode"></i><span>隐藏模式</span></a>
+                        <a href="javascript:;" style="display: none;" menu="hide_dense_file"><i class="icon-operate ifo-quit-hiddenmode"></i><span>退出隐藏模式</span></a>
+                    </div>
+                </div>
+                <!-- 更多菜单 -->
+                <div class="popup-box" data-dropdown-content="more" style="left: 190px; top: 60px; display: none;">
+                    <em class="arrow-position" style="left:20px; right:auto"><i class="arrow"></i><s class="arrow"></s></em>
+                    <div class="operation-file">
+                        <dl style="margin-top: 20px">
+                            <dt>
+                                <strong>文件筛选</strong>
+                                <div class="side">
+                                    <div class="op-switch-wrap" id="js_file_sort_check_warp">
+                                        <span>文件夹置顶</span>
+                                        <div class="option-switch" menu="set_file_mix">
+                                            <input type="checkbox" onclick="function f() {return false}">
+                                            <label for=""><i>开启</i><s>关闭</s><b>切换</b></label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </dt>
+                            <dd>
+                                <div class="list-filter" id="js_filter_box">
+                                    <a href="javascript:;" menu="filter" val="0" class="selected"><i class="iofl-alltype"></i><span>全部</span></a>
+                                    <a href="javascript:;" menu="filter" val="4"><i class="iofl-video"></i><span>视频</span></a>
+                                    <a href="javascript:;" menu="filter" val="3"><i class="iofl-music"></i><span>音频</span></a>
+                                    <a href="javascript:;" menu="filter" val="2"><i class="iofl-picture"></i><span>图片</span></a>
+                                    <a href="javascript:;" menu="filter" val="1"><i class="iofl-document"></i><span>文档</span></a>
+                                    <a href="javascript:;" menu="filter" val="6"><i class="iofl-app"></i><span>软件</span></a>
+                                    <a href="javascript:;" menu="filter" val="5"><i class="iofl-compress"></i><span>压缩包</span></a>
+                                    <!-- <a href="javascript:;" menu="filter" val="99"><i class=""></i><span>仅文件</span></a> -->
+                                    <a href="javascript:;" menu="filter" val="other"><i class="iofl-other"></i><span>其他</span></a>
+                                </div>
+                            </dd>
+                        </dl>
+
+                    </div>
+                </div>
+                <!-- // -->
+
+            </div>
+
+
+            <div class="main-vflow" id="js_file_container">
+
+                <script type="text/javascript">
+                                        $('[inframe]').on('click',function(){
+                        var go = $(this).attr('inframe');
+                        location.href = go;
+                        // top.location.href = '/?url='+encodeURIComponent(go)+'&mode=wangpan';
+                        return false;
+                    })
+                </script>
+                <script type="text/javascript">
+                    $(function(){  
+                        $("#js_filter_status").find('[menu="quit_filter"]').on("click",function(){
+                            top.window.REMOVETYPEFILTER();
+                            top.window.ADDHOMEACTIVECSS();
+                        })
+                        
+                        if(top.window.TOBACKSTARPAGE == true || localStorage.getItem("wangpan_is_hide") == "1"){                            
+                            $('[rel = "star_show_upload_bar"]').show();
+                            $('[rel = "star_content_show_more"]').show();
+                            $('[rel = "star_show_left_bar"]').show();
+                            top.window.TOBACKSTARPAGE = false;
+                        }                     
+                        $('[rel="data_report_more_button"]').on("click", function(){
+                            // 解决鼠标移到“┇”，选择“数据报告”，进入数据报告,没有显示返回按钮
+                            if(localStorage.getItem("wangpan_is_hide") == "1"){
+                                top.window.SHOWDATAREPORTPAGETOP = true;
+                            }
+                            
+                        })                        
+                        $('[rel="left_bar_rb_btn"]').on("click", function(){
+                            // 解决鼠标移到“┇”，选择“回收站”，进入回收站,没有显示返回按钮
+                            top.window.SHOWRBTOPBAR = true;
+                        })
+                        // 解决鼠标移到“┇”，选择“回收站”，进入回收站,没有显示返回按钮
+                        if(top.window.SHOWRBTOPBAR){
+                           // $('[rel="remove_box_top_btn"]').show();
+                        }
+                        //  返回页面时需要打开侧边栏
+                        $('[rel_btn="rb_back_btn"]').on("click", function(){
+                            top.window.LEFTHIDESIDE();
+                            top.window.SHOWRBTOPBAR = false;
+                            localStorage.setItem("wangpan_is_hide", 0);
+                        });
+                        $('[rel="open_transfer_left"]').on("click", function(){
+                            top.window.LEFTHIDESIDE();
+                            $('[rel="remove_box_top_btn"]').hide();
+                        })
+                                                var getVipDate = function(){
+                            $.ajax({
+                                url: '//webapi.115.com/user/vip_limit?feature=2',
+                                type: 'GET',
+                                xhrFields: {
+                                withCredentials: true,
+                                },
+                                success: function(r){                                    
+                                    if(r.state){
+                                        console.log(r.data.user_limit.limit_numbers)
+                                        $rbTxt.find('[rel="date_num"]').text(r.data.user_limit.limit_numbers);
+                                        var _arr = ['0','7','10'];
+                                        if(_arr.indexOf(r.data.user_limit.level) == -1){
+                                            $rbTxt.find('[txt_for=vip]').show();
+                                        }else{
+                                            $rbTxt.find('[txt_for=novip]').show();
+                                        }
+                                    }
+                                    else{
+                                        top.window.Core.MinMessage.Show({
+                                            text: r.msg, type: 'err', timeout: 2000
+                                        });
+                                    }
+                                },
+                                dataType: 'json'
+                            })
+                        };
+                        var $right_tvf = $('[rel=right_tvf]');
+                        if (location.href.indexOf('rb') > -1) {//回收站特殊处理
+                            var $rbTxt = $('#js_rb_txt')
+                            var $rbLeftTvf = $('[rel=left_tvf_for_rb]');
+                            $rbLeftTvf.show();
+                            $rbTxt.show();
+                            getVipDate();
+                            //if(top.COMMONHEADERUSERINFO.vip == 1) {
+                            //    $rbTxt.find('[txt_for=vip]').show();
+                           // }
+                           // else {
+                           //     $rbTxt.find('[txt_for=novip]').show();
+                           // }
+                            var $quick = $('#js_qucik_rb');
+                            $quick.attr({
+                                menu:'open',
+                                aid:1,
+                                cid:0
+                            });
+                            $quick.parent().show();
+                            var $star_btn = $('[menu="get_star"]');
+                            $star_btn.attr('menu','');
+                            $star_btn.on('click',function(){
+                                top.location.href = '/?mode=wangpan&tab=star';
+                            })
+                            $rbTxt.parent().addClass('with-btmline');
+                        } else {
+                            // $right_tvf.show();
+                        }
+                        //文件设置
+                        var setting_data = top.USER_SETTING;
+                        var title_config = ['page_num','isp_download','ssl_download']
+                        var $setting_list = $('#js_setting_list');
+                        for (var i = 0; i < title_config.length; i++) {
+                            var title = title_config[i];
+                            if (setting_data[title]) {
+                                $setting_list.find('li[d_type='+title+']').attr('val',setting_data[title]);
+                                $setting_list.find('a[d_type='+title+'][val='+setting_data[title]+']').addClass('selected');
+                                var t = $setting_list.find('a[d_type='+title+'][val='+setting_data[title]+']').text()
+                                if (title == 'ssl_download' ) {
+                                    if (setting_data[title] == 1) {
+                                        $setting_list.find('input[d_type="ssl_download"]').prop('checked',true);
+                                    }
+                                }else{
+                                    // $('[user_setting='+title+']').text(t);
+                                }
+
+                            }
+                        }
+                        // 校验文件空间
+                        $('#js_space_sync').on('click', function(){
+                            var url = $(this).attr('href');
+                            top.window.Core.MinMessage.Show({
+                                text: '校对网盘空间...',
+                                type: 'load',timeout: 10000
+                            });
+                            $.ajax({
+                                url: url,
+                                type: 'GET',cache: false, success: function(r){
+                                    top.window.Core.MinMessage.Hide();
+                                    if(r.state){
+                                        top.window.Core.SpaceData.Sync();
+                                        top.window.Core.MinMessage.Show({
+                                            text: r.msg, type: 'suc', timeout: 2000
+                                        });
+                                    }
+                                    else{
+                                        top.window.Core.MinMessage.Show({
+                                            text: r.msg, type: 'err', timeout: 2000
+                                        });
+                                    }
+                                },
+                                dataType: 'json'
+                            })
+
+                            return false;
+                        });
+                        $('[rel="show_left_side_btn"]').on("click", function(){
+                            localStorage.setItem("wangpan_is_hide", 0);
+                            // 调用文件列表标签隐藏后显示...
+                            top.window.FILEBOXRESIZE && top.window.FILEBOXRESIZE();
+                            $('[rel="page_top_btn"]').hide();
+                            top.window.LEFTHIDESIDE();
+                            top.window.SHOWTRANSFERTOPBTN = false;
+                            setTimeout(function(){                                
+                             top.window.RESIZECHANGEEVENTS && top.window.RESIZECHANGEEVENTS();
+                            },100)
+                        })
+                        $('[rel="star_show_left_bar"]').on("click", function(){
+                          //  $('[data-dropdown-tab="left_more_menu"]').hide();
+                            $('[rel="star_show_left_bar"]').hide();
+                          //  $('[rel="star_show_upload_bar"]').hide();
+                            top.window.LEFTHIDESIDE();
+                            top.window.SHOWTRANSFERTOPBTN = false;
+                            //  设置全局变量, 解决星标在退出隐藏模式后仍要显示展开栏
+                            top.window.STARTOPBUTTON = false;
+                        })
+                        if(top.window.STARTOPBUTTON | top.window.SHOWTRANSFERTOPBTN){
+                            $('[rel="page_top_btn"]').show();
+                        }
+                        $('[rel="star_content_show_more"]').on("mouseover", function(){
+                           // $('[data-dropdown-content="left_more_menu"]').css("left", "24px")
+                        })
+                        $('[rel="star_show_upload_bar"]').on("mouseover", function(){
+                            $('[rel="star_upload_box"]').show();
+                        });
+                        
+                         var _isHide = localStorage.getItem("wangpan_is_hide") || "";
+                            if (_isHide != "1") {
+                                $('[rel="show_left_side_btn"]').click();
+                            }
+
+                    });
+                    if (oofUtil.getQueryParamByKey('task') == 'lixianquota3') {
+                        top.Core.FileMenu.DoEvent([], 'offline_task');
+                    }
+                    $('[data-dropdown-tab="left_more_menu"]').mouseenter(function(){
+                        $('[data-dropdown-content="left_more_menu"]').css("left",$(this).offset().left)
+                    })
+                </script>
+                
+                
+<div id="js_cantain_box" class="page-center">
+    <div class="page-container" id="js_data_list_outer" style="bottom: 0px;">
+        <div class="list-wrap" style="min-height:100%;_height:100%;cursor:default;" id="js_data_list" rel="list"><div class="list-cell" ind="undefined"><div class="list-header" rel="list_header">                    <b class="checkbox" menu="file_check_all"></b><div class="header-name" text_type="default_text"><a href="javascript:;" menu="sort_file" val="file_name" order="1" class="btn-sort"><span>文件名</span><i icon_rel="file_name" class="icon-sort-default" style="display:inline-block;"></i></a><div class="desc" rel="selected_desc"><div class="operate-desc" rel="desc">当前共3个文件，1个文件夹</div></div></div>                     <div class="header-size" rel="header_size" style="display: block;">                        <a href="javascript:;" menu="sort_file" val="file_size" order="1" class="btn-sort"><span>大小</span><i icon_rel="file_size" class="icon-sort-default" style="display:inline-block;"></i></a>                    </div>                   <div class="header-typename" rel="header_type" style="display: block;">                        <a href="javascript:;" class="btn-sort" menu="sort_file" val="file_type" order="1"><span>种类</span><i icon_rel="file_type" class="icon-sort-default" style="display:inline-block;">升序</i></a>                    </div> <div class="header-modified" rel="header_date" style="display: block;">   <div class="btn-sort" order="1">     <div class="data-hasmenu" rel="time_box">       <span rel="time_title" menu="sort_file" val="user_ptime" order="1">创建时间</span>       <i class="icon-operate ifo-more" rel="arrow_more"></i>       <div class="context-menu">         <div class="cell">           <a href="javascript:;" rel="time_type" class="" menu="sort_file" val="user_utime" order="0">             <span>修改时间</span>           </a>           <a href="javascript:;" rel="time_type" menu="sort_file" val="user_ptime" order="1" class="current">             <span>创建时间</span>           </a>           <a href="javascript:;" rel="time_type" menu="sort_file" val="user_otime" order="0">             <span>上一次打开时间</span>           </a>         </div>       </div>     </div>     <i class="icon-sort-desc" menu="sort_file" val="user_ptime" icon_rel="user_time" style="display: inline-block; cursor: pointer;" order="1">降序</i>   </div> </div><a href="javascript:;" style="display: inline;" rel="toggle_detail" class="expand"><i></i><span>展开</span></a>                    <div class="header-directory" rel="header_directory" style="display: none;">                        <a href="javascript:;" class="btn-sort">所在目录</a>                    </div>                </div><div class="list-contents"><ul><li rel="item" c="0" title="Screens" hdf="0" file_type="0" pick_code="fabxfxulhxw2334tbc" is_share="{is_share}" is_top="0" area_id="1" p_id="3144897113368821186" cate_id="3144897113620479428" cate_name="Screens" score="0" has_desc="0" fl_encode="%5B%5D" fuuid="64990572" shared="0" style="undefined" has_pass="0" issct="0"><s class="drag-flag" data-rel="drag" style="cursor:pointer"></s><textarea style="display:none;" field="desc"></textarea><textarea style="display:none;" field="ext3"></textarea><input type="checkbox" value="3144897113620479428" style=""><div class="checkbox" menu="file_check_one"></div><div class="file-name-wrap"><i class="file-type tp-folder" folder-type="shared"></i><span class="file-name" rel="file_name"><em><a class="name" href="javascript:;" cate="1" menu="open" aid="1" cid="3144897113620479428" rel="view_folder"><span></span><span>Screens</span></a><a href="javascript:;" class="icon-star" menu="star" start_point="1" is_star="0" data_title="星标">星标</a><a href="javascript:;" class="icon-remarks" style="display: none;" menu="remark"></a><div class="score-stars" menu="file_score"></div></em></span><div class="labels-text" style="display:none;" rel="label_box"><span style="cursor:pointer; display: none;" class="ic-ellipsis" rel="more_label">...</span></div></div><div class="file-size"><span></span></div><div class="file-typename"><span>文件夹</span></div><div class="file-modified"><span>03:09</span></div><div class="file-directory"></div><div class="file-opr" rel="menu"><a href="javascript:;" menu="setTop" rel="setTop" style="{style}"><i class="icon-operate ifo-filesettop" menu="setTop"></i><span menu="setTop">置顶</span></a><a href="javascript:;" menu="star" is_star="0" style="{style}"><i class="icon-operate ifo-fav" is_star="0" menu="star"></i><span menu="star" is_star="0">星标</span></a><a href="https://115.com/?ct=browser&amp;ac=download_folder&amp;pickcode=fabxfxulhxw2334tbc" menu="download_dir_one" style=""><i class="icon-operate ifo-download" menu="download_dir_one"></i><span menu="download_dir_one">下载</span></a><a href="javascript:;" menu="move" style=""><i class="icon-operate ifo-move" menu="move"></i><span menu="move">移动</span></a><a href="javascript:;" menu="edit_file_label" style="{style}"><i class="icon-operate ifo-tag" menu="edit_file_label"></i><span menu="edit_file_label">标签</span></a><a href="javascript:;" menu="edit_name" style=""><i class="icon-operate ifo-rename" menu="edit_name"></i><span menu="edit_name">重命名</span></a><a href="javascript:;" menu="edit" style=""><i class="icon-operate ifo-edit" menu="edit"></i><span menu="edit">备注</span></a><a href="javascript:;" menu="delete" style="{style}"><i class="icon-operate ifo-remove" menu="delete"></i><span menu="delete">删除</span></a><a href="javascript:;" menu="public_share" style=""><i class="icon-operate ifo-share" menu="public_share"></i><span menu="public_share">分享</span></a><a href="javascript:;" menu="setShare" style=""><i class="icon-operate ifo-setshare" menu="setShare"></i><span menu="setShare">设置共享</span></a><a href="javascript:;" menu="cancelShare" style="display: none;" senond_flag="1"><i class="icon-operate ifo-cancelshare" menu="cancelShare"></i><span menu="cancelShare">取消共享</span></a><a href="javascript:;" menu_btn="more"><i class="icon-operate ifo-more"></i><span>更多</span></a></div></li><li iv="1" c="0" vdi="3" rel="item" title="Captain.America.Brave.New.World.2025.PROPER.1080p.WEB.h264-ETHEL.mkv" hdf="0" file_type="1" cid="3144897113368821186" file_mode="9" user_ptime="08:38" is_share="{is_share}" pick_expire="-" file_size="9414579688" is_top="0" file_id="3145062802444517057" file_status="1" area_id="1" p_id="3144897113368821186" ico="mkv" pick_code="a3xm876cjgt0fht3c" is_collect="{is_collect}" score="0" has_desc="0" is_q="0" shared="0" fl_encode="%5B%5D" fuuid="64990572" uid="64990572" has_pass="0" sha1="C7FB76B39EBB98F0A41D7B827FE84A6598757835" fvs="0"><s class="drag-flag" data-rel="drag" style="cursor:pointer"></s><textarea style="display:none;" field="desc"></textarea><textarea style="display:none;" field="ext3"></textarea><input type="checkbox" value="3145062802444517057" style=""><div class="checkbox" menu="file_check_one"></div><div class="file-settop" rel="top_ico" style="display:none;"></div><div class="file-name-wrap"><i class="file-type tp-mkv tp-video-fhd"><u class="duration" duration="01:58:25"></u></i><span class="file-name" rel="file_name"><em><a class="name" href="javascript:;" menu="view_file_one" title="Captain.America.Brave.New.World.2025.PROPER.1080p.WEB.h264-ETHEL.mkv" rel="file" field="file_name"><span>Captain.America.Brave.New.World.2025.PROPER.1080p.WEB.h264</span><span>-ETHEL.mkv</span></a><a href="javascript:;" class="icon-star" menu="star" start_point="1" is_star="0" data_title="星标">星标</a><a href="javascript:;" class="icon-remarks" style="display: none;" menu="remark"></a><div class="score-stars" menu="file_score"></div></em></span><div class="labels-text" style="display: none" rel="label_box"><span style="cursor:pointer; display: none;" class="ic-ellipsis" rel="more_label">...</span></div></div><div class="file-size"><span>8.77GB</span></div><div class="file-typename"><span>MKV文件</span></div><div class="file-modified"><span>08:38</span></div><div class="file-directory"></div><div class="file-opr" rel="menu"><a href="javascript:;" menu="setTop" rel="setTop" style="{style}"><i class="icon-operate ifo-filesettop" menu="setTop"></i><span menu="setTop">置顶</span></a><a href="javascript:;" menu="star" is_star="0" style="{style}"><i class="icon-operate ifo-fav" is_star="0" menu="star"></i><span menu="star" is_star="0">星标</span></a><a href="javascript:;" menu="download_one" style=""><i class="icon-operate ifo-download" menu="download_one"></i><span menu="download_one">下载</span></a><a href="javascript:;" menu="move" style=""><i class="icon-operate ifo-move" menu="move"></i><span menu="move">移动</span></a><a href="javascript:;" menu="edit_file_label" style="{style}"><i class="icon-operate ifo-tag" menu="edit_file_label"></i><span menu="edit_file_label">标签</span></a><a href="javascript:;" menu="edit_name" style=""><i class="icon-operate ifo-rename" menu="edit_name"></i><span menu="edit_name">重命名</span></a><a href="javascript:;" menu="edit" style=""><i class="icon-operate ifo-edit" menu="edit"></i><span menu="edit">备注</span></a><a href="javascript:;" menu="delete" style="{style}"><i class="icon-operate ifo-remove" menu="delete"></i><span menu="delete">删除</span></a><a href="javascript:;" menu="public_share" style=""><i class="icon-operate ifo-share" menu="public_share"></i><span menu="public_share">分享</span></a><a href="javascript:;" menu_btn="more"><i class="icon-operate ifo-more"></i><span>更多</span></a></div></li><li iv="0" c="0" vdi="0" rel="item" title="Torrent Downloaded From     UIndex.org      .txt" hdf="0" file_type="1" cid="3144897113368821186" file_mode="2" user_ptime="03:09" is_share="{is_share}" pick_expire="-" file_size="129" is_top="0" file_id="3144897113117162944" file_status="1" area_id="1" p_id="3144897113368821186" ico="txt" pick_code="eualatjdc5dfszwuj" is_collect="{is_collect}" score="0" has_desc="0" is_q="0" shared="0" fl_encode="%5B%5D" fuuid="64990572" uid="64990572" has_pass="0" sha1="898055559F9A2E854980257BC7C828CF3B64CE22" fvs="0"><s class="drag-flag" data-rel="drag" style="cursor:pointer"></s><textarea style="display:none;" field="desc"></textarea><textarea style="display:none;" field="ext3"></textarea><input type="checkbox" value="3144897113117162944" style=""><div class="checkbox" menu="file_check_one"></div><div class="file-settop" rel="top_ico" style="display:none;"></div><div class="file-name-wrap"><i class="file-type tp-txt"></i><span class="file-name" rel="file_name"><em><a class="name" href="javascript:;" menu="view_file_one" title="Torrent Downloaded From     UIndex.org      .txt" rel="file" field="file_name"><span>Torrent Downloaded From     UIndex.org</span><span>&nbsp;     .txt</span></a><a href="javascript:;" class="icon-star" menu="star" start_point="1" is_star="0" data_title="星标">星标</a><a href="javascript:;" class="icon-remarks" style="display: none;" menu="remark"></a><div class="score-stars" menu="file_score"></div></em></span><div class="labels-text" style="display: none" rel="label_box"><span style="cursor:pointer; display: none;" class="ic-ellipsis" rel="more_label">...</span></div></div><div class="file-size"><span>129.00B</span></div><div class="file-typename"><span>TXT文件</span></div><div class="file-modified"><span>03:09</span></div><div class="file-directory"></div><div class="file-opr" rel="menu"><a href="javascript:;" menu="setTop" rel="setTop" style="{style}"><i class="icon-operate ifo-filesettop" menu="setTop"></i><span menu="setTop">置顶</span></a><a href="javascript:;" menu="star" is_star="0" style="{style}"><i class="icon-operate ifo-fav" is_star="0" menu="star"></i><span menu="star" is_star="0">星标</span></a><a href="javascript:;" menu="download_one" style=""><i class="icon-operate ifo-download" menu="download_one"></i><span menu="download_one">下载</span></a><a href="javascript:;" menu="move" style=""><i class="icon-operate ifo-move" menu="move"></i><span menu="move">移动</span></a><a href="javascript:;" menu="edit_file_label" style="{style}"><i class="icon-operate ifo-tag" menu="edit_file_label"></i><span menu="edit_file_label">标签</span></a><a href="javascript:;" menu="edit_name" style=""><i class="icon-operate ifo-rename" menu="edit_name"></i><span menu="edit_name">重命名</span></a><a href="javascript:;" menu="file_edit" style=""><i class="icon-operate ifo-remark" menu="file_edit"></i><span menu="file_edit">编辑</span></a><a href="javascript:;" menu="edit" style=""><i class="icon-operate ifo-edit" menu="edit"></i><span menu="edit">备注</span></a><a href="javascript:;" menu="delete" style="{style}"><i class="icon-operate ifo-remove" menu="delete"></i><span menu="delete">删除</span></a><a href="javascript:;" menu="public_share" style=""><i class="icon-operate ifo-share" menu="public_share"></i><span menu="public_share">分享</span></a><a href="javascript:;" menu_btn="more"><i class="icon-operate ifo-more"></i><span>更多</span></a></div></li><li iv="0" c="0" vdi="0" rel="item" title="captain.america.brave.new.world.2025.proper.1080p.web.h264-ethel.nfo" hdf="0" file_type="1" cid="3144897113368821186" file_mode="1" user_ptime="03:09" is_share="{is_share}" pick_expire="-" file_size="600" is_top="0" file_id="3144897113117162939" file_status="1" area_id="1" p_id="3144897113368821186" ico="nfo" pick_code="cn1x13e7is7m3dmne" is_collect="{is_collect}" score="0" has_desc="0" is_q="0" shared="0" fl_encode="%5B%5D" fuuid="64990572" uid="64990572" has_pass="0" sha1="327540A75DFFE9A5871BC8C1EBFA179FDAA3C519" fvs="0"><s class="drag-flag" data-rel="drag" style="cursor:pointer"></s><textarea style="display:none;" field="desc"></textarea><textarea style="display:none;" field="ext3"></textarea><input type="checkbox" value="3144897113117162939" style=""><div class="checkbox" menu="file_check_one"></div><div class="file-settop" rel="top_ico" style="display:none;"></div><div class="file-name-wrap"><i class="file-type tp-nfo"></i><span class="file-name" rel="file_name"><em><a class="name" href="javascript:;" menu="view_file_one" title="captain.america.brave.new.world.2025.proper.1080p.web.h264-ethel.nfo" rel="file" field="file_name"><span>captain.america.brave.new.world.2025.proper.1080p.web.h264</span><span>-ethel.nfo</span></a><a href="javascript:;" class="icon-star" menu="star" start_point="1" is_star="0" data_title="星标">星标</a><a href="javascript:;" class="icon-remarks" style="display: none;" menu="remark"></a><div class="score-stars" menu="file_score"></div></em></span><div class="labels-text" style="display: none" rel="label_box"><span style="cursor:pointer; display: none;" class="ic-ellipsis" rel="more_label">...</span></div></div><div class="file-size"><span>600.00B</span></div><div class="file-typename"><span>NFO文件</span></div><div class="file-modified"><span>03:09</span></div><div class="file-directory"></div><div class="file-opr" rel="menu"><a href="javascript:;" menu="setTop" rel="setTop" style="{style}"><i class="icon-operate ifo-filesettop" menu="setTop"></i><span menu="setTop">置顶</span></a><a href="javascript:;" menu="star" is_star="0" style="{style}"><i class="icon-operate ifo-fav" is_star="0" menu="star"></i><span menu="star" is_star="0">星标</span></a><a href="javascript:;" menu="download_one" style=""><i class="icon-operate ifo-download" menu="download_one"></i><span menu="download_one">下载</span></a><a href="javascript:;" menu="move" style=""><i class="icon-operate ifo-move" menu="move"></i><span menu="move">移动</span></a><a href="javascript:;" menu="edit_file_label" style="{style}"><i class="icon-operate ifo-tag" menu="edit_file_label"></i><span menu="edit_file_label">标签</span></a><a href="javascript:;" menu="edit_name" style=""><i class="icon-operate ifo-rename" menu="edit_name"></i><span menu="edit_name">重命名</span></a><a href="javascript:;" menu="edit" style=""><i class="icon-operate ifo-edit" menu="edit"></i><span menu="edit">备注</span></a><a href="javascript:;" menu="delete" style="{style}"><i class="icon-operate ifo-remove" menu="delete"></i><span menu="delete">删除</span></a><a href="javascript:;" menu="public_share" style=""><i class="icon-operate ifo-share" menu="public_share"></i><span menu="public_share">分享</span></a><a href="javascript:;" menu_btn="more"><i class="icon-operate ifo-more"></i><span>更多</span></a></div></li></ul></div></div><div style="display: none" rel="list_attr" class="list-attribute">
+                            <div class="attr-header">                                <div rel="title_box" class="attr-title">
+                                    <strong rel="title">文件详情</strong>
+                                    <a btn="fold" href="javascript:;" class="collapse"><i></i><span>收起</span></a>
+                                </div>
+                            </div>
+                            <div rel="content_box" class="attr-contents">                                <div rel="empty_box" class="folder-empty folder-empty-checkedfile">
+                                    <div class="empty-content">
+                                        <h5>选中文件/文件夹，查看详情</h5>
+                                    </div>
+                                </div>
+                            </div>
+                        </div></div>
+    </div>
+</div>
+<div style="display:none;" id="js_no_file_box"></div>
+</div>
+<div class="bottom-vflow" id="js_pagination_box" style="display: none;"></div>
+<script src="//cdnassets.115.com/??libs/jquery-1.7.2.js,jquery-extend.js?v=1744962475" type="text/javascript"></script>
+<script type="text/javascript" src="//cdnres.115.com/site/static/plug/public_share/js/share.common.js?_vh=53f28d0_88"></script>
+<script type="text/javascript" src="//cdnres.115.com/site/static/plug/main_2014_wl/main.js?_vh=a16c6e3_88"></script>
+<script type="text/javascript">
+    ;
+    (function() {
+
+        var _filterVal = oofUtil.getQueryParamByKey('file_filter') || "";
+        var IS_LOAD_ONE = false;
+       top.window.LEFTSIDEFILTERFILE && top.window.LEFTSIDEFILTERFILE(_filterVal);
+        $('#js_panel_nav_box').find('[rel=file]').addClass('current');
+        try{
+            TOP.oofUtil.tutorials.showTutorial("wangpan");
+        }catch(e){}
+        // 加载列表
+        var reInstanceSetting = window.FileMainReInstanceSetting = {
+            aid: Number('1'),
+            cid: Number('417965119134480442'),
+            o: 'user_ptime',
+            asc: '0',
+            offset: '0',
+            show_dir: 1,
+            limit: '24',
+            code: '',
+            scid: '',
+            snap: Number(''),
+            natsort: 1,
+            record_open_time: 1, //是否要记录文件夹的打开时间：1：是；0：否
+            count_folders: 1,
+            type: _filterVal
+            
+        };
+        var tab =  TOP.oofUtil.getQueryParamByKey('tab',location.href) || TOP.oofUtil.getQueryParamByKey('tab'), //优先取iframe内的tab
+            url_setting = {cid: reInstanceSetting.cid, offset: reInstanceSetting.offset};
+        if (tab == 'download' || tab == 'offline') {
+            // reInstanceSetting.custom_order = 2;
+            url_setting.tab = 'download';
+            var getTaskCount = function(json){
+                if (json.state) {
+                    $.ajax({
+                        url:'/lixian/?ct=lixian&ac=get_task_cnt',
+                        type:'POST',
+                        data:{
+                            uid:top.USER_ID,
+                            time:json.time,
+                            sign:json.sign
+                        },
+                        xhrFields:{withCredentials:true},
+                        success:function(r){
+                            if (typeof(r) == 'string' ) {
+                                r = JSON.parse(r);
+                            }
+                            if (r.state && r.cnt != 0) {
+                                $('[rel="offline"][count="task"]').text('任务('+r.cnt+')');
+                                setTimeout(function(){
+                                    getTaskCount(json);
+                                },30000);
+                            }else{
+                                $('[rel="offline"][count="task"]').text('任务');
+                            }
+                        }
+                    });
+                }
+            };
+            if (!top.window.Core['OFFL5Plug']) {
+                top.$.getScript( "//cdnres.115.com/site/static/plug/offline_wl/offline5.0.js?_vh=c8cfb9e_88",function(){
+                    top.Core['OFFL5Plug'].AddClient({
+                    });
+                    top.window.Core['OFFL5Plug'].GetPostSignData(function(json){
+                        getTaskCount(json)
+                    });
+                })
+            }
+            else {
+                top.window.Core['OFFL5Plug'].GetPostSignData(function(json){
+                    getTaskCount(json)
+                });
+            }
+            if(tab == 'offline') {
+                var download = TOP.oofUtil.getQueryParamByKey('download');
+                if(download) {
+                    //在topbar.js等待ofline5.0.js加载完毕 再打开链接任务弹层
+                }
+                else {
+                    TOP.Core.FileDialogApi.OpenTransferTabDialog('offline_task');
+                }
+            }
+        }
+        top.CommonHeader.setLeftSideLabelSelect && top.CommonHeader.setLeftSideLabelSelect(''); // 晴空左侧标签选中
+        switch (tab) {
+            case 'star':
+                top.CommonHeader.setTopNavSelect('lately');
+                reInstanceSetting.star = 1;
+                url_setting.tab = 'star';
+                break;
+            case 'recive':
+                top.CommonHeader.setTopNavSelect('lately');
+                url_setting.tab = 'recive';
+                reInstanceSetting.custom_order = 0;
+                reInstanceSetting.fc_mix = 1;
+                break;
+            case 'video':
+                url_setting.tab = tab;
+                reInstanceSetting.type = 4;
+                reInstanceSetting.fc_mix = 1;
+                break;
+            case 'doc':
+                url_setting.tab = tab;
+                reInstanceSetting.type = 1;
+                reInstanceSetting.fc_mix = 1;
+                break;
+            case 'software':
+                url_setting.tab = tab;
+                reInstanceSetting.type = 6;
+                reInstanceSetting.fc_mix = 1;
+                break;
+        }
+        var open_dialog =  TOP.oofUtil.getQueryParamByKey('open_dialog',location.href); //需要打开的弹窗
+        // if (/\/us\/([0-9a-zA-Z]+)$/.test(top.location.href)) {
+        //     var folder_invite_code = top.location.href.match(/\/us\/([0-9a-zA-Z]+)$/)[1]
+        //     open_dialog = 'folder_invite'
+        // }
+        if(open_dialog) {
+            switch (open_dialog) {
+                case 'shared_list':
+                case 'recent_view':
+                case 'star':
+                case 'rb':
+                    TOP.Core.FileDialogApi.OpenFileListDialog(open_dialog);
+                    break;
+                case 'save':
+                case 'offline_task':
+                case 'upload':
+                case 'receive':
+                    TOP.Core.FileDialogApi.OpenTransferTabDialog(open_dialog);
+                    break;
+                case 'folder_invite':
+                var folder_invite_code = TOP.oofUtil.getQueryParamByKey('code',location.href)
+                    $.ajax({
+                        url: '//webapi.115.com/usershare/invite',
+                        type: 'get',
+                        dataType: 'json',
+                        xhrFields:{
+                            withCredentials:true
+                        },
+                        data:{invite_code: folder_invite_code},
+                        success:function (r) {
+                            if (r.state) {
+                                if (new Date().getTime() > (r.data.create_time*1000 + 24*3600*1000)) return showIniteDg('invalid')
+                                if (!r.data.user_is_joined) showIniteDg('invite')
+                            } else {
+                                if (r.errno == 4500017) {
+                                    showIniteDg('invalid')
+                                }
+                                $.alertTip(r.error)
+                            }
+                        }
+                    })
+                    function showIniteDg(type) {
+                        var setting = {
+                            data: {
+
+                            },
+                            callback: function(dg) {
+                                setTimeout(function () {
+                                    top.location.href = '//115.com'
+                                }, 500);
+                                dg.Close()
+                            },
+                            DialogClose: function() {
+
+                            }
+                        };
+                        setting.data.type = type
+                        setting.data.inviteCode = folder_invite_code
+                        var height = type == 'invite' ? 350 : 238
+                        var dg = top.Core.SimpleFrameDG.Open('shareFolder3', '//cdnassets.115.com/plug/setShared/index.html?v=1744962524557', {
+                            title: ' ',
+                            width: 360,
+                            height: height - 68,
+                            ready: function (win) {
+                                setting.data.dg = dg
+                                win.setSharedInit(setting);
+                            },
+                            is_hide_back: true,
+                        });
+                    }
+                    break;
+            }
+            history.replaceState(null,document.title,location.href.replace('open_dialog='+open_dialog,''))
+        }
+
+        var slimit = TOP.oofUtil.getQueryParamByKey('slimit', TOP.location.href);
+        if(slimit) {
+            url_setting['slimit'] = slimit;
+        }
+        var notResetUrl = false;
+
+        /*if(url_setting.tab == 'recive') {
+            notResetUrl = true;
+        }*/
+
+        if(!notResetUrl) {
+            TOP.oofUtil.urlMaintain.resetUrl("wangpan",url_setting);
+        }
+        if ($.inArray(reInstanceSetting.aid, [2, 3, 4, 9]) != -1) {
+            reInstanceSetting.aid = 1;
+        }
+
+        var tplType = 'view_large';
+
+        if (TOP.USER_SETTING) {
+            if (tab != 'download' && tab != 'offline') {//云下载文件夹不读user_setting排序
+                if (TOP.USER_SETTING.order_file) {
+                    reInstanceSetting.o = TOP.USER_SETTING.order_file;
+                }
+                if (TOP.USER_SETTING.asc_file) {
+                    reInstanceSetting.asc = TOP.USER_SETTING.asc_file;
+                }
+            }
+            var view_file = TOP.Core.LocalUserSetting.Get('view_file')  || 'list';
+            if (view_file) {
+                tplType = view_file;
+            }
+
+            if (TOP.USER_SETTING.page_num) {
+                if (TOP.USER_SETTING.page_num == '0') {
+                    reInstanceSetting.limit = TOP.SCREEN_PARAM.page_count;
+                }
+                else {
+                    reInstanceSetting.limit = TOP.USER_SETTING.page_num;
+                }
+            }
+            else {
+                reInstanceSetting.limit = TOP.SCREEN_PARAM.page_count;
+            }
+
+            if(slimit) {
+                reInstanceSetting.limit = slimit*1;
+            }
+
+        }
+
+        tplType = tplType.replace("_pg", "");
+        if (tplType == 'view')
+            tplType = 'view_large';
+        window["interface"] = Main.ListUI.Interface.get(tplType.replace("_pg", ""), '1');
+        if(!Main.InMiniFrame) {
+            TOP.Ext.CACHE.FileInterface = window.interface;
+        }
+        //加载第一页数据
+
+        /**
+        * 115新版浏览器上传完回调
+        **/
+        try{
+            var browserInterface = window.browserInterface;
+            if(browserInterface) {
+                var keyName = 'OOF_UPLOAD_SUCCESS_REFRESH';
+                browserInterface.RemoveRegisterCallBack(keyName);
+                window[keyName] = function (arr) {
+                    var obj = JSON.parse(decodeURIComponent(arr));
+                    for(var i=0;i<obj.length;i++) {
+                        var d = obj[i];
+                        if(!d.company_id && d.cid == reInstanceSetting.cid) {
+                            top.Core.FileConfig.DataAPI.Reload(reInstanceSetting.aid, reInstanceSetting.cid);
+                            break;
+                        }
+                    }
+                }
+                browserInterface.AddRegisterCallBack(keyName);
+
+                $(window).on('beforeunload',function(e){
+                    //115浏览器离开页面反注册方法
+                    try{
+                        browserInterface.RemoveRegisterCallBack(keyName);
+                    }catch(e){}
+                });
+
+            }
+        }catch(e){}
+
+        /**
+         *  重置操作条宽度和left
+         */
+        $(window).on('resize',function () {
+            Main.Operate.ResetOperateMenu()
+        });
+
+        var showRecive = tab == 'recive';
+        // var showRecive = Number('');
+        var showLooked = Number('');
+
+        TOP.Core.DataAccess.FileRead.GetFileList(
+        reInstanceSetting,
+        function(r) {
+            var dataSource = r;
+            dataSource.tips = r.path;
+
+            top.Core.NewSetting.Change({last_file_type:'folder',last_file_id:reInstanceSetting.cid})
+
+            Main.Instance(
+            dataSource, //数据源
+            {
+                //内容重置事件
+                ReInstanceHandler: function(setting) {
+                    var getListCallback = false;
+
+                    var only_offset = true;
+
+
+                    var _tab = oofUtil.getQueryParamByKey('tab', TOP.location.href);
+
+
+                    var cache_offset = reInstanceSetting['offset'];
+
+                    if (setting) {
+                        //重置访问设置
+                        for (var k in setting) {
+                            if (k != 'offset') {
+                                only_offset = false;
+                            }
+                            if ($.inArray(k, ['type', 'star']) != -1 && setting[k] != reInstanceSetting[k]) {
+                                reInstanceSetting['offset'] = 0;
+                            }
+                            if (k == 'callback' && typeof setting[k] == 'function') {
+                                getListCallback = setting[k];
+                            } else if (k == 'next_page' && setting[k] == true) {
+                                reInstanceSetting['offset'] = Number(reInstanceSetting['offset']) + Number(reInstanceSetting['limit']);
+                            }else if (k == 'prev_page' && setting[k] == true) {
+                                reInstanceSetting['offset'] = Number(reInstanceSetting['offset']) - Number(reInstanceSetting['limit']);
+                            } else {
+                                reInstanceSetting[k] = setting[k];
+                            }
+
+                        }
+                        if (reInstanceSetting['offset'] < 0 && setting['prev_page'] == true) {// 已经是第一页，不允许往前翻页
+                            getListCallback && getListCallback({state:false})
+                            return;
+                        }
+                        if (_tab == 'recive') {
+                            if (reInstanceSetting.o != 'user_ptime') {//”我的接收“混排&&记忆排序
+                                delete reInstanceSetting.fc_mix;
+                                delete reInstanceSetting.custom_order;
+                            }else{
+                                reInstanceSetting.custom_order = 0;
+                                reInstanceSetting.fc_mix = 1;
+                            }
+                        }
+                        if (_tab == 'download') {
+                            if (reInstanceSetting.o != 'user_ptime') {//“云下载” 混排&&强制时间排序
+                                delete reInstanceSetting.custom_order;
+                            }else{
+                                reInstanceSetting.custom_order = 0;
+                            }
+                        }
+                        if (!getListCallback) {
+                            var url_setting = {cid: reInstanceSetting.cid, offset: reInstanceSetting.offset};
+
+                            if (setting.star) {
+                                url_setting.tab = 'star';
+                            }else if (_tab) {
+                                url_setting.tab = _tab;
+                            }
+
+                            //星标列表 点击"文件"退出星标列表
+                            if(_tab == 'star' && setting.star === '') {
+                                try{
+                                    delete url_setting.tab;
+                                }catch(e){}
+                            }
+                            if(!notResetUrl) {
+                                TOP.oofUtil.urlMaintain.resetUrl("wangpan",url_setting);
+                            }
+                        }
+
+                    }
+                    if (only_offset) {// 翻页时将滚动条设置到顶部
+                        Main.History.Mark(reInstanceSetting, {
+                            top: 0
+                        });
+                    }
+                    TOP.Core.DataAccess.FileRead.GetFileList(
+                        reInstanceSetting,
+                        function(r) {
+                            top.Core.NewSetting.Change({last_file_type:'folder',last_file_id:reInstanceSetting.cid})
+                            if (setting) {
+                                if (setting.next_page || setting.prev_page) {// 此时仅执行了获取数据，没有执行翻页，故还原offset
+                                    reInstanceSetting['offset'] = cache_offset;
+                                }
+                            }
+                            r.tips = r.path;
+                            if (getListCallback) {
+                                getListCallback(r);
+                                getListCallback = false;
+                            }else{
+                                Main.List.Load(r);
+                                Main.SelectCommand.Change(false);
+                            }
+                        }
+                    );
+
+                },
+                //内容重置事件(根据不同的视图模式切换)
+                ReInstanceByModeHandler: function(type) {
+                    Main.History.Mark(reInstanceSetting, {
+                        top: $(Main.CONFIG.ContainBox).parent().scrollTop()
+                    });
+                    TOP.Core.DataAccess.FileRead.GetFileList(
+                    reInstanceSetting,
+                    function(r) {
+                        Main.CONFIG.ModeType = type;
+                        window["interface"] = Main.ListUI.Interface.get(Main.CONFIG.ModeType, Number(r.aid));
+                        r.tips = r.path;
+                        Main.List.Load(r);
+                        Main.SelectCommand.Change(false);
+                    }
+                );
+                },
+                //切换大目录
+                ReInstanceByAidHandler: function(aid, cid,special_order) {
+                    Main.History.Mark(reInstanceSetting, {
+                        top: $(Main.CONFIG.ContainBox).parent().scrollTop()
+                    });
+                    reInstanceSetting.aid = Number(aid);
+                    reInstanceSetting.cid = cid;
+                    reInstanceSetting.offset = 0;
+                    reInstanceSetting.type = "";
+                    reInstanceSetting.star = "";
+                    reInstanceSetting.is_share = "";
+                    reInstanceSetting.suffix = "";
+                    var tab = '';
+                    if (special_order) {
+                        if (special_order == 2) {//”我的接收“混排&&记忆排序
+                            tab = 'recive';
+                            reInstanceSetting.custom_order = 0;
+                            reInstanceSetting.fc_mix = 1;
+                        }
+                        if (special_order == 3) {//“云下载” 混排&&强制时间排序
+                            tab = 'download'
+                            reInstanceSetting.custom_order = 0;
+                            reInstanceSetting.o = 'user_ptime';
+                            reInstanceSetting.asc = 0;
+                        }
+
+                    }else{
+                        reInstanceSetting.custom_order = '';
+                        reInstanceSetting.fc_mix = '';
+                    }
+                    if (reInstanceSetting.snap) {
+                        delete reInstanceSetting.snap;
+                    }
+                    Main.History.Reset(reInstanceSetting);
+
+                    if(!notResetUrl) {
+                        TOP.oofUtil.urlMaintain.resetUrl('wangpan', {cid: reInstanceSetting.cid, offset: reInstanceSetting.offset,tab:tab});
+                    }
+                    // if (Top.oofUtil.urlMaintain.currentMode == 'search') {
+                    //     TOP.location.href = '/?cid='+reInstanceSetting.cid+'&offset='+reInstanceSetting.offset+'&tab='+tab+'&mode=wangpan';
+                    // } else {
+                    //     TOP.oofUtil.urlMaintain.resetUrl(mode, {cid: reInstanceSetting.cid, offset: reInstanceSetting.offset,tab:tab});
+                    // }
+
+                    TOP.Core.DataAccess.FileRead.GetFileList(
+                    reInstanceSetting,
+                    function(r) {
+                        top.Core.NewSetting.Change({last_file_type:'folder',last_file_id:reInstanceSetting.cid})
+                        r.tips = r.path;
+                        Main.List.Load(r, true);
+                        Main.SelectCommand.Change(false);
+                        Main.History.Localization(reInstanceSetting.cid);
+                    }
+                );
+                },
+                //跳入目录
+                GotoDir: function(setting) {
+                    Main.History.Mark(reInstanceSetting, {
+                        top: $(Main.CONFIG.ContainBox).parent().scrollTop()
+                    });
+
+                    if (setting) {
+                        //重置访问设置
+                        for (var k in setting) {
+                            reInstanceSetting[k] = setting[k];
+                        }
+                    }
+                    reInstanceSetting.type = "";
+                    reInstanceSetting.star = "";
+                    reInstanceSetting.is_share = "";
+                    if (setting.snap) {
+                        reInstanceSetting.snap = setting.snap;
+                    } else {
+                        if (reInstanceSetting.snap) {
+                            delete reInstanceSetting.snap;
+                        }
+                    }
+                    TOP.Core.DataAccess.FileRead.GetFileList(
+                    reInstanceSetting,
+                    function(r) {
+                        //改变头部
+                        r.tips = r.path;
+                        Main.List.Load(r);
+                        Main.SelectCommand.Change(false);
+                    }
+                );
+                }
+             },
+            {
+                HasRightKey: true,
+                ModeType: tplType
+            }
+        );
+
+
+            if(showLooked){
+                $('#js_see_ed_btn').click();
+            }
+
+
+            if(!IS_LOAD_ONE) {
+                //  暂时关闭庶罩层
+                return;
+                IS_LOAD_ONE = true;
+                var GUIDE_TYPE = 507;
+                ;(function () {
+                    $(function () {
+                        var guid = new top.guideHelp({
+                            width:1000,
+                            index:0,
+                            step: [],
+                            callback:function (ind, confirm) {
+                                if(ind == 4) {
+                                    localStorage.setItem('showChatGuide', true)
+                                }
+                                $.ajax({
+                                    url: '//115.com/?ctl=guide',
+                                    type: 'post',
+                                    dataType: 'json',
+                                    xhrFields:{
+                                        withCredentials:true
+                                    },
+                                    data:{type:GUIDE_TYPE, step:1},
+                                    success:function (r) {
+
+                                    }
+                                })
+                            }
+                        })
+                        $.ajax({
+                            url: '//115.com/?ctl=guide',
+                            type: 'get',
+                            dataType: 'json',
+                            xhrFields:{
+                                withCredentials:true
+                            },
+                            data:{type:GUIDE_TYPE},
+                            success:function (r) {
+                                if(!r.step) {
+                                    guid.init(0);
+                                } else {
+                                    if(!localStorage.getItem('showChatGuide')) {
+                                        guid.init(4);
+                                    }
+                                }
+                            }
+                        })
+                    })
+            })();
+            }
+
+        }
+
+    );
+    })();
+
+
+
+
+</script>
+</div>
+
+
+<script type="text/javascript">
+    // wide-page
+    ;(function(){
+        var warp = $('.wrap');
+        if(top.window['SCREEN_MAX_OBJ']){
+            top.window['SCREEN_MAX_OBJ'].maxFun['file_list'] = function(isMax){
+                if(isMax){
+                    if(!warp.hasClass('wide-page')){
+                        warp.addClass('wide-page');
+                    }
+                }
+                else{
+                    if(warp.hasClass('wide-page')){
+                        warp.removeClass('wide-page');
+                    }
+                }
+            };
+        
+            if(top.window['SCREEN_MAX_OBJ'].isMax){
+                warp.addClass('wide-page');
+            }
+        }
+        
+        ;(function(){
+            if(top.Core.CONFIG.HTML5){
+                window.setTimeout(function(){
+                    var win = $(window);
+                    win.on("dragenter", function(e){
+                        top.Core.Upload.WinDragOver && top.Core.Upload.WinDragOver(e);
+                        return false;
+                    });
+                    win.on("dragover", function(e){
+                        top.Core.Upload.WinDragOver && top.Core.Upload.WinDragOver(e);
+                        return false;
+                    });
+                    win.on("dragleave", function(e){
+                        top.Core.Upload.WinDrayleave && top.Core.Upload.WinDrayleave(e);
+                    });
+                    win.on("drop", function(){
+                        return false;
+                    })
+                }, 1);
+            }
+        })();
+        
+        
+    })();
+</script>
+<script type="text/javascript" src="//cdnassets.115.com/plug/emojiFont/emoji.js"></script>
+
+<div class="context-menu" id="js_bacth_tag_menu" style="display: none;"><div class="cell-icon"><a href="javascript:;"><i class="icon-operate ifo-batch-tag-add"></i><span>批量添加</span></a><a href="javascript:;"><i class="icon-operate ifo-batch-tag-reset"></i><span>批量重设</span></a><a href="javascript:;"><i class="icon-operate ifo-batch-tag-replace"></i><span>批量替换</span></a><a href="javascript:;"><i class="icon-operate ifo-batch-tag-remove"></i><span>批量移除</span></a></div></div>

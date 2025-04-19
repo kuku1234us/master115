@@ -1,0 +1,26 @@
+app:
+  title: "Qt Base Application"
+  icon: "fa5s.window-maximize"
+  icon_path: null # Path to .ico or .png file, if null will use icon from qtawesome
+  window:
+    width: 1200
+    height: 800
+    min_width: 800
+    min_height: 600
+
+sidebar:
+  title: "Application"
+  icon: "fa5s.bars"
+  sections:
+    - title: "Main"
+      items:
+        - id: "dashboard"
+          title: "Dashboard"
+          icon: "fa5s.home"
+          page: "DashboardPage"
+    - title: "Settings"
+      items:
+        - id: "preferences"
+          title: "Preferences"
+          icon: "fa5s.cog"
+          page: "PreferencesPage"

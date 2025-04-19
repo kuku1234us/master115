@@ -1,0 +1,40 @@
+app:
+  title: "Movie Python"
+  icon: "fa5s.film" # Fallback qtawesome icon
+  icon_path: "moviepython/resources/moviepython.png" # Preferred: Path to custom icon file
+  window:
+    width: 1000
+    height: 700
+    min_width: 700
+    min_height: 500
+
+logging:
+  level: "DEBUG" # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_to_file: True # Log messages to [app_title].log
+  log_to_console: True # Print log messages to the terminal/console
+  clear_on_startup: True # Clear the log file each time the app starts
+
+sidebar:
+  title: "Movie Python"
+  icon: "fa5s.film"
+  sections:
+    - title: "Main"
+      items:
+        - id: "home"
+          title: "Home"
+          icon: "fa5s.home"
+          page: "HomePage" # Corresponds to HomePage class
+        - id: "search"
+          title: "Search"
+          icon: "fa5s.search"
+          page: "SearchPage" # Corresponds to SearchPage class
+    - title: "Settings"
+      items:
+        - id: "preferences"
+          title: "Preferences"
+          icon: "fa5s.cog"
+          page: "PreferencesPage" # Corresponds to PreferencesPage class
+
+# AI section removed for simplicity in this initial setup
+# ai:
+#  ...

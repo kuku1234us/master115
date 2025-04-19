@@ -1,0 +1,16 @@
+---
+description: 
+globs: *.md
+alwaysApply: false
+---
+# Documentation Writing Style
+
+The documentations of our system is geared towards training junior developers. When writing documentation, it’s important to adopt a ​clear, essay/paragraph format, and tutorial-style approach, instead of using incomplete sentences or pure bullet points. Unlike bullet-pointed GitHub documentation, which is often concise and technical, your documentation should ​explain concepts in detail, provide ​context, and ​guide developers step-by-step. Rules to follow:
+- ​Explain Why: Context first
+- ​Be a tutor
+- Explain the rationale behind design decisions that are not obvious or trivial
+- ​Use Examples: Code snippets with explanations.
+- ​Anticipate Questions: Address confusion points.
+- ​Use Analogies on difficult/complex concepts: Relate to familiar concepts.
+- ​Add Visuals, Ascii Diagrams
+- Use complete sentences, paragraphs, essay style

@@ -1,0 +1,26 @@
+[project]
+name = "master115"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "kothreat",email = "kuku1234us@yahoo.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9,<3.14"
+dependencies = [
+    "selenium (>=4.31.0,<5.0.0)",
+    "webdriver-manager (>=4.0.2,<5.0.0)",
+    "pyqt6 (>=6.9.0,<7.0.0)",
+    "groq (>=0.22.0,<0.23.0)",
+    "dotenv (>=0.9.9,<0.10.0)",
+    "qtawesome (>=1.4.0,<2.0.0)",
+    "pyyaml (>=6.0.2,<7.0.0)",
+    "requests (>=2.32.3,<3.0.0)",
+    "pyinstaller (>=6.13.0,<7.0.0)",
+    "pillow (>=11.2.1,<12.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
