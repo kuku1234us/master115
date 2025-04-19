@@ -26,12 +26,12 @@ This directory houses the backbone services and data handling classes.
 
 *   **`SettingsManager` (`settings_manager.py`)**
     *   **Purpose:** Provides a centralized, singleton interface for managing application settings.
-    *   **Functionality:** It cleverly combines two types of settings:
-        *   **Persistent Settings (Registry/QSettings):** Uses PyQt6's `QSettings` to store user-specific settings that should persist between application runs (e.g., window size, volume, last-used directories). On Windows, this typically maps to the Registry; on other OSes, it uses appropriate native methods. Accessed via `SettingsManager.instance().get(...)` and `SettingsManager.instance().set(...)`.
-        *   **Static Configuration (YAML):** Loads a main application configuration file (specified during application startup, e.g., `music_player_config.yaml`) into memory. This YAML file defines the application's structure, initial settings, sidebar layout, AI parameters, logging configuration, etc. Accessed via `SettingsManager.instance().get_yaml_config(...)`.
+    *   **Functionality:** It elegantly manages two distinct types of settings:
+        *   **Persistent Settings (Registry/QSettings):** Leverages PyQt6's `QSettings` to store user-specific settings and application state that need to persist between sessions (e.g., window size and position, user preferences like volume, recently accessed file paths). On Windows, this data is typically stored in the Registry, while on macOS and Linux, it uses standard configuration file formats (`.plist`, `.ini`). These settings are both readable and writable during runtime. Accessed via `SettingsManager.instance().get(...)` and `SettingsManager.instance().set(...)`.
+        *   **Static Application Configuration (YAML):** Loads a main application configuration file (whose path is specified when calling `create_application` in the entry point script, like `run_myapp.py`). This YAML file defines the application's fundamental structure, initial settings, sidebar layout, logging configuration, and potentially other static parameters. This configuration is loaded once at startup and is generally treated as *read-only* during the application's execution. Accessed via `SettingsManager.instance().get_yaml_config(...)`.
     *   **Key Methods:**
-        *   `instance()`: Accesses the singleton instance.
-        *   `load_yaml_config(path)`: Loads the specified YAML file.
+        *   `instance()`: Accesses the singleton instance. Ensures only one `SettingsManager` exists.
+        *   `load_yaml_config(path)`: Called internally (usually by `BaseWindow` during its initialization) to load the specified YAML file into memory.
         *   `get_yaml_config(key_path, default)`: Retrieves values from the loaded YAML using dot notation (e.g., `'app.title'`).
         *   `get(key, default, type)`: Retrieves a persistent setting (from Registry/QSettings).
         *   `set(key, value, type)`: Stores a persistent setting.
@@ -170,10 +170,10 @@ Handles the visual appearance of the application.
 Provides the main application window structure.
 
 *   **`BaseWindow` (`base_window.py`)**
-    *   **Purpose:** A `QMainWindow` subclass providing a standard layout featuring a collapsible sidebar (`SidebarWidget`) on the left and a central content area (a `QStackedWidget` managed by the `BaseWindow`).
+    *   **Purpose:** A `QMainWindow` subclass providing a standard application window layout, typically featuring a collapsible sidebar (`SidebarWidget`) on the left and a central content area (managed by a `QStackedWidget`). It serves as the primary building block for the application's main user interface.
     *   **Functionality:**
-        *   Loads the main application configuration YAML during initialization and makes it available via `self.config` and also loads it into `SettingsManager` for global access.
-        *   Sets up the window title and initial size based on the configuration.
+        *   **Configuration Loading:** During its initialization (`__init__`), `BaseWindow` receives the path to the application's specific configuration YAML file (passed down from `create_application`). It uses `ResourceLocator` to find the absolute path to this file and then instructs the `SettingsManager` singleton to load it (`SettingsManager.instance().load_yaml_config(absolute_path)`). This makes the YAML configuration globally accessible via `SettingsManager.instance().get_yaml_config(...)`. It also often stores the loaded configuration dictionary directly in an instance variable like `self.config` for convenient access within the window class itself.
+        *   **Window Setup:** Sets the window title, initial size, and minimum dimensions based on values retrieved from the loaded YAML configuration (using `SettingsManager` or `self.config`).
         *   Creates the `SidebarWidget` and connects its `item_clicked` signal.
         *   Creates the main content area, including a header (`QWidget`) with a sidebar toggle button and a page title (`QLabel`).
         *   Uses a `QStackedWidget` (`self.content_stack`) to manage different application pages.
@@ -206,17 +206,22 @@ Contains reusable UI widgets.
 This module ties everything together during application startup.
 
 *   **`create_application(...)` Function:**
-    *   Creates the `QApplication` instance.
-    *   Initializes the `ThemeManager` singleton.
-    *   Applies platform-specific setup (like dark title bars on Windows).
-    *   Loads custom fonts using `ResourceLocator`.
-    *   Applies basic application-wide styles.
-    *   Instantiates the main window class (e.g., `MusicPlayerDashboard`, which subclasses `BaseWindow`), passing the path to the application configuration YAML.
-    *   Sets the application icon.
-    *   Returns the `app` and `window` instances.
+    *   **Purpose:** The primary factory function responsible for setting up the `QApplication` instance and the main application window. It orchestrates the initial setup steps.
+    *   **Arguments:** Typically accepts the main window class (`window_class`, which should be a subclass of `BaseWindow`), the path to the application's configuration YAML file (`config_path`), paths to application icons (`icon_paths`), and optionally font configurations (`fonts_dir`, `font_mappings`).
+    *   **Steps:**
+        *   Creates the core `QApplication` instance.
+        *   Initializes the `ThemeManager` singleton.
+        *   Applies platform-specific setup (like dark title bars on Windows).
+        *   Loads custom fonts specified via `fonts_dir` and `font_mappings` using `ResourceLocator`.
+        *   Applies basic application-wide styles (potentially sourced from `ThemeManager`).
+        *   Instantiates the main window class provided (`window_class`, e.g., `myapp.ui.main_window.MainWindow`), crucially passing the `config_path` and potentially other necessary arguments to the window's constructor.
+        *   Sets the application icon(s) using `ResourceLocator` to find the files specified in `icon_paths`.
+        *   Returns the initialized `app` (QApplication) and `window` (main window instance) objects.
 *   **`run_application(app, window)` Function:**
-    *   Shows the main window (`window.show()`).
-    *   Starts the Qt event loop (`app.exec()`).
+    *   **Purpose:** Takes the initialized `app` and `window` objects and starts the application's execution.
+    *   **Steps:**
+        *   Shows the main window (`window.show()`).
+        *   Starts the Qt event loop (`app.exec()`).
 
 ## Tutorial: Creating a New Application
 
@@ -251,16 +256,16 @@ It's recommended to keep your application code separate from the framework code.
 
 **2. Create Configuration (`myapp/resources/myapp_config.yaml`):**
 
-This file defines *your* application's specifics. The `create_application` function will load this.
+This file defines *your* application's specific structure and initial settings. The path to this file is passed to `create_application`.
 
 ```yaml
 # myapp/resources/myapp_config.yaml
 app:
-  title: "MyApp"
-  icon: "fa5s.rocket"
-  icon_path: "myapp/resources/rocket.png"
+  title: "MyApp"                  # Window title and used for log file name
+  # icon: "fa5s.rocket"             # Optional: Default icon for sidebar title if needed
+  # icon_path: "myapp/resources/rocket.png" # Optional: Path to main app icon for window/taskbar (also passed to create_application)
   window:
-    width: 900
+    width: 900                  # Initial window width
     height: 650
     min_width: 600
     min_height: 400
@@ -280,13 +285,13 @@ sidebar:
         - id: "home"
           title: "Home"
           icon: "fa5s.home"
-          page: "HomePage" # Name corresponds to your page class
+          page: "HomePage"          # MUST match the Python class name of your page widget
     - title: "Help"
       items:
         - id: "about"
           title: "About"
           icon: "fa5s.info-circle"
-          page: "AboutPage"
+          page: "AboutPage"         # Example: Class name for the About page
 ```
 
 **3. Create Pages (`myapp/ui/pages/`):**
@@ -311,28 +316,39 @@ This script sets everything up.
 import sys
 import os
 
-# Add project root to path if necessary, depending on how you run it
-# e.g., if run from MyProjectRoot:
-# sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# Ensure the project root is in the Python path if running from MyProjectRoot
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from qt_base_app.app import create_application, run_application
-from myapp.ui.main_window import MainWindow
+from myapp.ui.main_window import MainWindow # Import your main window class
 
 def main():
-    # --- Pass the path to YOUR config file --- 
+    # --- Define the relative path to YOUR app's config file ---
+    # This path is relative to where run_myapp.py is located (MyProjectRoot)
     app_config_path = os.path.join("myapp", "resources", "myapp_config.yaml")
 
+    # --- Define relative paths to YOUR app's icons ---
+    app_icon_base = os.path.join("myapp", "resources", "rocket") # Base name without extension
+
+    # --- Call the framework's setup function ---
     app, window = create_application(
-        window_class=MainWindow,
-        config_path=app_config_path, # Pass the correct path here
-        icon_paths=[
-            # Relative paths are resolved by ResourceLocator
-            os.path.join("myapp", "resources", "rocket.ico"),
-            os.path.join("myapp", "resources", "rocket.png")
+        window_class=MainWindow,          # Pass your main window class
+        config_path=app_config_path,      # Pass the path to your config YAML
+        icon_paths=[                      # Pass paths for .ico and .png icons
+            f"{app_icon_base}.ico",
+            f"{app_icon_base}.png"
         ],
-        # Optional Font config
-        # fonts_dir=os.path.join("myapp", "resources", "fonts"),
+        # Optional Font configuration:
+        # fonts_dir=os.path.join("myapp", "resources", "fonts"), # Folder containing font files
+        # font_mappings={                                         # Map font file names to logical names
+        #     "MyCustomFont-Regular.ttf": "default",
+        #     "MyMonoFont-Regular.ttf": "monospace",
+        # }
     )
+
+    # --- Start the application event loop ---
     return run_application(app, window)
 
 if __name__ == "__main__":
@@ -350,4 +366,4 @@ Execute `python run_myapp.py` from the `/MyProjectRoot` directory. The `create_a
 *   `MainWindow` then continues its `__init__` (initializing the logger, which reads from `SettingsManager`) and `initialize_pages` (creating page instances and adding them using `add_page`).
 *   The application starts.
 
-This tutorial demonstrates how the `qt_base_app`
+This tutorial demonstrates how the `qt_base_app` framework provides the structure, and your application (`myapp`) provides the specific configuration, pages, and main window logic by subclassing and configuring the base components.
