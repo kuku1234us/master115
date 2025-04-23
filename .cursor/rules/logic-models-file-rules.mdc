@@ -1,0 +1,8 @@
+---
+description: 
+globs: *.py
+alwaysApply: false
+---
+- All models and logic related code file should be placed inside the `./master115/models/` subfolder.
+
+- Do not place any logic / models related files into any "logic" subfolder which does not exist.

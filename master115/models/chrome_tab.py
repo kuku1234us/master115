@@ -216,7 +216,7 @@ class ChromeTab:
                  return False
 
         except TimeoutException:
-            self.logger.warning(self.caller_name, f"Timeout waiting for element to be clickable: {locator_for_msg}")
+            self.logger.warn(self.caller_name, f"Timeout waiting for element to be clickable: {locator_for_msg}")
             return False
         except Exception as e:
             self.logger.error(self.caller_name, f"Error clicking element {locator_for_msg}: {e}", exc_info=False)

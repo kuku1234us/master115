@@ -28,7 +28,21 @@ sidebar:
           title: "Search"
           icon: "fa5s.search"
           page: "SearchPage" # Corresponds to SearchPage class
-    - title: "Settings"
+        - id: "pixnova"
+          title: "Pixnova"
+          icon: "fa5s.magic" # Example icon
+          page: "PixnovaPage" # Corresponds to PixnovaPage class
+    - title: "AI" # New AI section
+      items:
+        - id: "face_dashboard"
+          title: "Face Dashboard"
+          icon: "fa5s.user-circle" # Changed from fa5r to fa5s
+          page: "FaceDashboardPage"
+        - id: "face_review"
+          title: "Face Review"
+          icon: "fa5s.images" # Example icon
+          page: "FaceReviewPage"
+    - title: "Settings" # Moved Settings section to the end
       items:
         - id: "preferences"
           title: "Preferences"

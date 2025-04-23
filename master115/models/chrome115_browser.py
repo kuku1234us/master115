@@ -1,9 +1,10 @@
 # master115/models/chrome115_browser.py
 from __future__ import annotations # For Type Hinting ChromeTab within the class
 
-from typing import Optional, Type, Dict, TypeVar, TYPE_CHECKING
+from typing import Optional, Type, Dict, TypeVar, TYPE_CHECKING, List
 from pathlib import Path
 import time
+import requests
 
 from selenium import webdriver
 # from selenium.webdriver.remote.webelement import WebElement # Not directly used here
@@ -90,7 +91,8 @@ class Chrome115Browser:
         # Allow user_data_dir to be empty/None to use default profile
         self._user_data_dir: Optional[str] = self.settings.get(
              self._user_data_dir_key,
-             None, # Default to None (Selenium uses a temp profile)
+             # --- Use the known working path as the DEFAULT --- #
+             "C:/Users/Administrator/AppData/Local/115Chrome/User Data", # Use forward slashes
              SettingType.STRING # Stored as string path
         )
         # Example: Hardcode for testing if needed, but prefer settings
@@ -134,7 +136,7 @@ class Chrome115Browser:
         try:
             options = Options()
             options.binary_location = chrome_path_str
-            options.add_argument("--start-maximized")
+            # options.add_argument("--start-maximized") # Removed this line
             # options.add_argument("--disable-gpu") # Sometimes helps stability
             # options.add_argument("--no-sandbox") # Use with caution if needed
             # options.add_argument("--disable-dev-shm-usage") # Often needed in Linux/Docker
@@ -143,13 +145,26 @@ class Chrome115Browser:
             # Detach option keeps browser open after script exit (for debugging)
             # options.add_experimental_option("detach", True)
 
-            if self._user_data_dir and Path(self._user_data_dir).is_dir():
-                 self.logger.info(self.caller_name, f"Using User Data Directory: {self._user_data_dir}")
-                 options.add_argument(f"--user-data-dir={self._user_data_dir}") # Note the double hyphen
-                 # Add profile directory if needed, often 'Default' or 'Profile 1' etc.
-                 # options.add_argument("--profile-directory=Default")
+            # --- Updated User Data Directory Logic --- #
+            user_data_path_to_use = None
+            if self._user_data_dir: # Check if the setting has a value (could be default or from user)
+                user_data_p = Path(self._user_data_dir)
+                if user_data_p.is_dir():
+                    user_data_path_to_use = str(user_data_p.resolve()) # Use resolved absolute path
+                    # Check if it's the default path or a custom one from settings
+                    default_user_data_path = "C:/Users/Administrator/AppData/Local/115Chrome/User Data"
+                    if str(user_data_p.resolve()) == str(Path(default_user_data_path).resolve()):
+                        self.logger.info(self.caller_name, f"Using DEFAULT User Data Directory: {user_data_path_to_use}")
+                    else:
+                        self.logger.info(self.caller_name, f"Using User Data Directory FROM SETTINGS ('{self._user_data_dir_key}'): {user_data_path_to_use}")
+                    options.add_argument(f"--user-data-dir={user_data_path_to_use}")
+                    # Optional: Specify profile directory if needed
+                    # options.add_argument("--profile-directory=Default") 
+                else:
+                    self.logger.warning(self.caller_name, f"User Data Directory specified ('{self._user_data_dir_key}': '{self._user_data_dir}') but is not a valid directory. Using default temporary profile.")
             else:
-                 self.logger.info(self.caller_name, "No valid User Data Directory specified. Using default temporary profile.")
+                 self.logger.info(self.caller_name, f"No User Data Directory specified ('{self._user_data_dir_key}' setting is empty). Using default temporary profile.")
+            # ----------------------------------------- #
 
             service_args = []
             # service_args = ['--log-level=DEBUG', '--log-path=./chromedriver.log'] # Example service logging
@@ -456,6 +471,92 @@ class Chrome115Browser:
         # Optional: Call list_tabs() first to ensure pruning? Could add overhead.
         # self.list_tabs()
         return self._tabs.get(handle)
+
+    # --- Direct API Interaction Methods --- #
+
+    def get_cookies(self) -> Optional[List[Dict[str, str]]]:
+        """Gets all cookies from the current browser session."""
+        driver = self.get_webdriver()
+        if not driver:
+            self.logger.error(self.caller_name, "Cannot get cookies, browser not running.")
+            return None
+        try:
+            cookies = driver.get_cookies()
+            # self.logger.debug(self.caller_name, f"Retrieved {len(cookies)} cookies.")
+            return cookies
+        except Exception as e:
+            self.logger.error(self.caller_name, f"Failed to retrieve cookies: {e}", exc_info=True)
+            return None
+
+    def get_folder_contents_api(self, folder_id: str = "0", offset: int = 0, limit: int = 115) -> Optional[Dict]:
+        """Uses requests to get folder contents via API, leveraging browser cookies."""
+        self.logger.info(self.caller_name, f"Attempting API request for folder CID: {folder_id}")
+        if not self.is_running():
+            self.logger.error(self.caller_name, "Cannot perform API request, browser not running.")
+            return None
+
+        browser_cookies = self.get_cookies()
+        if not browser_cookies:
+            self.logger.error(self.caller_name, "Cannot perform API request, failed to get browser cookies.")
+            return None
+
+        # Format cookies for requests session
+        # requests.Session expects a RequestsCookieJar or a dict {name: value}
+        # We'll convert the list of dicts from Selenium
+        request_cookies = {cookie['name']: cookie['value'] for cookie in browser_cookies}
+
+        api_url = "https://webapi.115.com/files"
+        params = {
+            "aid":     1,
+            "cid":     folder_id,
+            "o":       "user_ptime", # Default sort order often observed
+            "asc":     0,            # Descending sort
+            "offset":  offset,
+            "limit":   limit,
+            "show_dir": 1,           # Include directories
+            "natsort": 1,           # Use natural sorting
+            # Add other params if needed based on observation (e.g., star, source, format)
+        }
+        headers = {
+            # Use a realistic User-Agent
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
+            "Referer":    "https://115.com/",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+        }
+
+        session = requests.Session()
+        session.headers.update(headers)
+        session.cookies.update(request_cookies)
+
+        try:
+            self.logger.debug(self.caller_name, f"Sending GET request to {api_url} with params: {params}")
+            resp = session.get(api_url, params=params, timeout=20) # Increased timeout
+            resp.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+
+            # Log raw response for debugging if needed (can be large)
+            # self.logger.debug(self.caller_name, f"API Response Status: {resp.status_code}, Content: {resp.text[:500]}...")
+
+            json_data = resp.json()
+            if json_data.get("state"): # Check 115 API specific success indicator
+                self.logger.info(self.caller_name, f"Successfully retrieved API data for folder {folder_id}.")
+                return json_data
+            else:
+                error_msg = json_data.get("error", "Unknown API error")
+                self.logger.error(self.caller_name, f"115 API returned error for folder {folder_id}: {error_msg}")
+                return None
+
+        except requests.exceptions.Timeout:
+             self.logger.error(self.caller_name, f"Timeout connecting to 115 API for folder {folder_id}.")
+             return None
+        except requests.exceptions.RequestException as e:
+            self.logger.error(self.caller_name, f"Request failed for folder {folder_id}: {e}", exc_info=True)
+            return None
+        except ValueError as e: # Catches JSONDecodeError
+             self.logger.error(self.caller_name, f"Failed to decode JSON response for folder {folder_id}: {e}. Response text: {resp.text[:500]}")
+             return None
+        except Exception as e:
+             self.logger.error(self.caller_name, f"Unexpected error during API request for folder {folder_id}: {e}", exc_info=True)
+             return None
 
     # Add other browser-level utility methods if needed
     # E.g., method to clear cookies, manage profiles etc.

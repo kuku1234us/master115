@@ -95,6 +95,10 @@ class SettingsManager:
             SettingType.PATH: Path
         }
         
+        # Define keys consistently
+        SettingsManager.AI_ROOT_DIR_KEY = 'ai/root_dir'
+        SettingsManager.DEFAULT_AI_ROOT_DIR = str(Path.home() / "AIRoot") # Default to User's Home/AIRoot
+        
         # Default settings (for registry/QSettings) - AI defaults removed previously
         self._defaults = {
             'player/volume': (100, SettingType.INT),
@@ -102,7 +106,10 @@ class SettingsManager:
             'preferences/playlists_dir': (str(Path.home()), SettingType.PATH),
             'ui/sidebar/expanded': (True, SettingType.BOOL),
             'recent/files': ([], SettingType.LIST),
-            'recent/playlists': ([], SettingType.LIST)
+            'recent/playlists': ([], SettingType.LIST),
+            # --- Add AI Root Default ---
+            SettingsManager.AI_ROOT_DIR_KEY: (SettingsManager.DEFAULT_AI_ROOT_DIR, SettingType.PATH),
+            # -------------------------
         }
         
         # Initialize QSettings with defaults if not set
