@@ -119,7 +119,7 @@ class FaceSwapWorker(QObject):
             self.log_message.emit(f"[{worker_id_short}] Initializing WebDriver...")
             try:
                 # Consider headless=True for production
-                self.driver = initialize_chrome_driver(headless=True) 
+                self.driver = initialize_chrome_driver(headless=False) # DEBUG: Run with visible browser
                 if not self.driver:
                     raise WebDriverException("Failed to initialize WebDriver instance.")
                 self.log_message.emit(f"[{worker_id_short}] Navigating to Pixnova...")

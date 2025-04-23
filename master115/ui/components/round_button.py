@@ -32,11 +32,11 @@ class RoundButton(QPushButton):
         super().__init__(parent)
         
         self.theme = ThemeManager.instance()
-        self.size = size
+        self.diameter = size  # Renamed from size
         self.icon_size = icon_size
         
-        # Set fixed size
-        self.setFixedSize(size, size)
+        # Set fixed size using diameter
+        self.setFixedSize(self.diameter, self.diameter)
         
         # Set cursor
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -48,7 +48,7 @@ class RoundButton(QPushButton):
         
         # Calculate font size based on button size
         # For text mode, font height should be approximately 2/3 of button diameter
-        font_height = int(size * 0.67)  # 2/3 of button size
+        font_height = int(self.diameter * 0.67) # Use diameter
         if text and len(text) > 1:
             # For multi-character text, reduce size to fit
             font_height = int(font_height * 0.6)
@@ -57,7 +57,7 @@ class RoundButton(QPushButton):
         self.setStyleSheet(f"""
             QPushButton {{
                 background-color: {rgba_color};
-                border-radius: {size/2}px;
+                border-radius: {self.diameter/2}px; /* Use diameter */
                 padding: 0px;  /* Remove padding to maximize text space */
                 border: none;
                 font-family: "Arial Black", "Arial", sans-serif;  /* Use Arial Black with fallbacks */
@@ -65,7 +65,7 @@ class RoundButton(QPushButton):
                 font-size: {font_height}px;
                 color: {self.theme.get_color('text', 'primary')};
                 text-align: center;
-                line-height: {size}px;  /* Center text vertically */
+                line-height: {self.diameter}px;  /* Use diameter */
             }}
             QPushButton:hover {{
                 background-color: rgba({rgb_tuple[0]}, {rgb_tuple[1]}, {rgb_tuple[2]}, {min(bg_opacity + 0.2, 1.0)});
@@ -103,11 +103,11 @@ class RoundButton(QPushButton):
         # Clear any existing icon
         self.setIcon(QIcon())
         # Update font size based on text length
-        font_height = int(self.size * 0.67)  # 2/3 of button size
+        font_height = int(self.diameter * 0.67)  # Use diameter
         if len(text) > 1:
             font_height = int(font_height * 0.6)
         # Update text styling
         self.setStyleSheet(self.styleSheet().replace(
-            f"font-size: {self.size}px;",
+            f"font-size: {self.diameter}px;", # Target the diameter value used initially
             f"font-size: {font_height}px;"
         )) 

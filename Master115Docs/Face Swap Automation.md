@@ -229,19 +229,83 @@ The core automation logic triggered by the "Start" button on the Face Dashboard.
 ### 5.1. People Manager (`./master115/models/people_manager.py`)
 
 -   **Purpose:** The `PeopleManager` serves as a centralized, singleton service responsible for discovering and managing information about the "people" available for face swapping. Its primary role is to abstract the complexities of filesystem scanning and caching away from the UI components like `PeopleGrid`. Think of it as the librarian for your face assets. Using a singleton pattern (`PeopleManager.instance()`) ensures that all parts of the application access the same, consistent person data and cache.
--   **Core Responsibilities:**
-    -   **Finding AI Root:** It collaborates with `SettingsManager` to locate the configured "AI Root Directory", which is the base path for all face swap operations. It includes validation to ensure the path is set and points to an actual directory.
-    -   **Scanning for Persons:** The `get_persons` method scans the `<AI Root Directory>/Faces/` subdirectory. It identifies each immediate subfolder within `Faces/` as a distinct person.
-    -   **Discovering Face Images:** For each person directory found, it searches for valid image files (jpg, png, jpeg, gif) and creates `FaceData` objects for each one found.
-    -   **Data Aggregation:** It aggregates the discovered information into `PersonData` objects, each containing the person's name, their directory path, and a list of their associated `FaceData` objects.
-    -   **Caching:** To avoid costly filesystem scans every time the data is needed (e.g., when switching tabs), `PeopleManager` maintains an internal cache (`_persons_cache`) of the `PersonData` list. The `get_persons` method returns cached data by default unless `force_rescan=True` is specified or the cache is empty. The `invalidate_cache` method allows explicitly clearing this cache.
--   **Key Methods:**
-    -   `instance()`: The class method to access the singleton instance.
-    -   `_get_ai_root()`: (Internal helper) Retrieves and validates the AI root path from `SettingsManager`.
-    -   `get_persons(force_rescan=False)`: Returns the list of all discovered `PersonData` objects, utilizing the cache unless a rescan is forced.
-    -   `get_person_data_by_names(names)`: Efficiently retrieves the full `PersonData` objects for a specific list of person names, using the cached data.
-    -   `invalidate_cache()`: Clears the internal person data cache.
-    -   `get_first_image_path(person_name)`: A helper method specifically for UI components like `PersonBadge`, providing the path to the first discovered face image for a given person, which is typically used as their avatar.
+
+### 5.2. Review Manager (`./master115/models/review_manager.py`): Bridging Completion and Review
+
+**Purpose and Rationale:**
+
+As the `FaceSwapManager` completes processing all selected faces for a particular source image, we reach a critical transition point. The raw processing is done, but the results haven't been approved by the user yet. We need a reliable way to:
+
+1.  **Persist State:** Remember which source images are fully processed and which generated temporary files belong to them, even if the application restarts.
+2.  **Manage Files:** Move the original source image out of the input queue (`SourceImages/`) and into a holding area (`SourceImages/Completed/`) to prevent it from being processed again.
+3.  **Notify UI:** Inform the `FaceReviewPage` that new results are available for inspection.
+
+While the `FaceSwapManager` *could* handle these tasks, it would tightly couple the swap orchestration logic with state persistence and file system management specific to the review process. Similarly, having the `FaceReviewPage` manage the state file directly would burden the UI component with non-UI responsibilities.
+
+Therefore, we introduce the `ReviewManager` as a dedicated, centralized service (implemented as a singleton) to handle this specific responsibility. It acts as the single source of truth for the "pending review" state, decoupling the `FaceSwapManager` (which only *reports* completion) from the `FaceReviewPage` (which *consumes* the pending review list). This adheres to the principle of Separation of Concerns, making the system easier to understand, test, and maintain.
+
+**Core Responsibilities:**
+
+The `ReviewManager` is solely responsible for the lifecycle of items awaiting user review:
+
+1.  **Receiving Completion Notification:** It exposes the `add_pending_review` method, which the `FaceSwapManager` calls when it determines all faces have been successfully processed for a given source image.
+2.  **Moving Completed Source Files:** Upon receiving a notification via `add_pending_review`, the `ReviewManager` takes ownership of moving the original source image file from its location in `<AI Root Directory>/SourceImages/` to the `<AI Root Directory>/SourceImages/Completed/` subdirectory. This ensures the source file is archived correctly *before* its state is recorded.
+3.  **Maintaining `PendingReview.json`:** It manages the `PendingReview.json` file located in the AI Root Directory. This file stores a list of all source images that have been fully processed and are awaiting review. The `ReviewManager` handles reading this file on startup, adding new entries when `add_pending_review` is called (after a successful file move), removing entries when the `FaceReviewPage` signals completion (via `remove_pending_review`), and writing changes back to the file persistently. It includes error handling for file I/O and potential JSON corruption (creating backups if needed).
+4.  **Notifying the UI:** After successfully moving the source file and updating the JSON, it emits the `review_item_added(dict)` signal. This signal carries the dictionary representing the newly added review item, allowing the `FaceReviewPage` to update its display dynamically without needing to constantly poll or rescan.
+
+**Process Flow:**
+
+The interaction sequence involving the `ReviewManager` is as follows:
+
+1.  `FaceSwapManager`'s `_on_task_complete` slot receives a `task_complete` signal from a `FaceSwapWorker`.
+2.  It updates its internal progress tracker (`_source_image_progress`) for the specific source image associated with the task.
+3.  It checks if the number of completed faces for that source image now equals the total number expected.
+4.  If the source image is fully processed, `FaceSwapManager` calls `_handle_source_completion`.
+5.  Inside `_handle_source_completion`, `FaceSwapManager` calls `ReviewManager.instance().add_pending_review(original_source_path, result_paths)`.
+6.  `ReviewManager`'s `add_pending_review` method:
+    *   Calculates the destination path in the `Completed/` folder.
+    *   Attempts to move the `original_source_path` file to the `completed_path`.
+    *   If the move succeeds:
+        *   Creates a dictionary containing the original path, completed path, and the list of result image paths.
+        *   Adds this dictionary to its internal list (`_pending_reviews`).
+        *   Saves the updated list to `PendingReview.json`.
+        *   Emits the `review_item_added` signal with the newly created dictionary as the payload.
+    *   If the move fails, it logs an error and takes no further action for that item.
+7.  `FaceReviewPage`, having connected to the `review_item_added` signal during its initialization, receives the signal in its `_on_review_item_added` slot.
+8.  The slot parses the received dictionary and adds a corresponding `ReviewQueueItem` widget to its `QListWidget`, making the newly completed item visible to the user for review.
+
+**`PendingReview.json` Format:**
+
+The `PendingReview.json` file stores a JSON list (array). Each element in the list is an object (dictionary) representing one source image group that is pending review. The structure of each object is:
+
+```json
+[
+  {
+    "original_source_path": "D:\\AIRoot\\SourceImages\\source_image1.jpg",
+    "completed_source_path": "D:\\AIRoot\\SourceImages\\Completed\\source_image1.jpg",
+    "result_image_paths": [
+      "D:\\AIRoot\\Temp\\PersonA Face1 source_image1.jpg",
+      "D:\\AIRoot\\Temp\\PersonB Face2 source_image1.jpg"
+    ]
+  },
+  {
+    "original_source_path": "D:\\AIRoot\\SourceImages\\another_source.png",
+    "completed_source_path": "D:\\AIRoot\\SourceImages\\Completed\\another_source.png",
+    "result_image_paths": [
+       "D:\\AIRoot\\Temp\\PersonA Face1 another_source.jpg",
+       "D:\\AIRoot\\Temp\\PersonB Face2 another_source.jpg"
+    ]
+  }
+]
+```
+
+*   `original_source_path`: The absolute path (as a string) to the source image *before* it was moved. This serves as a unique identifier for the review item.
+*   `completed_source_path`: The absolute path (as a string) to the source image *after* it was moved to the `Completed/` directory.
+*   `result_image_paths`: A list containing the absolute paths (as strings) to all the generated face swap images stored in the `Temp/` directory for this specific source image.
+
+**Thread Safety:**
+
+Since the `task_complete` signal from `FaceSwapWorker` instances might arrive from different threads, and the UI updates triggered by `review_item_added` happen on the main GUI thread, the `ReviewManager` uses a `threading.Lock` (`_lock`) to protect all access to its internal `_pending_reviews` list and the read/write operations on the `PendingReview.json` file. This prevents race conditions and ensures data integrity. Qt's signal/slot mechanism handles the cross-thread communication safely for the `review_item_added` signal.
 
 ### 5.2. Initialization
 
@@ -491,7 +555,7 @@ This section outlines the detailed steps required to implement the AI Face Swap 
     - [x] **(Defer Thumbnail):** Set the `ReviewQueueItem`'s placeholder view. *(Note: Implemented synchronous loading)*
     - [x] Store the group data (person, source, list of temp files) within the `QListWidgetItem` (e.g., using `setData`). *(Note: Data stored in item widget)*
     - [x] Add the item to the `QListWidget` and set the `ReviewQueueItem` as its widget (`setItemWidget`).
-- [ ] **ReviewQueueItem Thumbnail Loading:** Enhance `ReviewQueueItem` to accept the list of result file paths for its group. Load the *first* image file from the list, scale it (`QPixmap.scaled`), and display it in the thumbnail `QLabel`. Implement asynchronous loading (e.g., using `QRunnable` and `QThreadPool`) to avoid blocking the UI. Show a placeholder while loading.
+- [x] **ReviewQueueItem Thumbnail Loading:** Enhance `ReviewQueueItem` to accept the list of result file paths for its group. Load the *first* image file from the list, scale it (`QPixmap.scaled`), and display it in the thumbnail `QLabel`. *(Note: Displays thumbnail; async loading is a potential future optimization)*
 
 ### Milestone 3: Review Popup Implementation and Interaction
 
@@ -527,15 +591,21 @@ This section outlines the detailed steps required to implement the AI Face Swap 
     - [ ] Get the `ResultImageDisplay` widget at that index from the layout.
     - [ ] If it exists, call its `toggle_approval()` method.
 - [ ] **Review Popup '+' Hotkey:** In `keyPressEvent`, if the key is '+':
-    - [ ] Iterate through all `ResultImageDisplay` widgets in the layout.
-    - [ ] Check their `is_approved` state.
-    - [ ] For each approved widget, get its result file path and move the file from `Temp/` to `FaceSwapped/` (create `FaceSwapped/` if needed). Handle potential file errors.
-    - [ ] For each *not* approved widget, get its result file path and delete the file from `Temp/`. Handle potential file errors.
-    - [ ] Emit a custom signal (e.g., `review_completed`) from the dialog.
-    - [ ] Close the dialog (`self.accept()` or `self.done(QDialog.Accepted)`).
+    - [ ] Identifies all "checked" images in the current view.
+    - [ ] Moves each checked image file from `<AI Root Directory>/Temp/` to `<AI Root Directory>/FaceSwapped/` (create `FaceSwapped/` if needed). Handle potential file errors.
+    - [ ] Deletes all "unchecked" image files for this group from `<AI Root Directory>/Temp/`.
+    - [ ] Signal the `ReviewManager` to remove the entry for the just-reviewed item (using its `original_source_path`).
+    - [ ] Signal the `FaceReviewPage` to remove the corresponding visual item from the main queue list.
+    - [ ] Attempt to find the *next* available review item in the `FaceReviewPage`'s list.
+    - [ ] If a next item is found:
+        - [ ] Clear the current content of the popup (title, displayed images).
+        - [ ] Load and display the data (title, result images) for the *next* review item within the *same* popup window.
+    - [ ] If no next item is found:
+        - [ ] Close the dialog (`self.accept()` or `self.done(QDialog.Accepted)`).
 - [ ] **Review Page Refresh:** Connect the `review_completed` signal from the dialog to the method on `FaceReviewPage` that scans `Temp/` and repopulates the `QListWidget`.
+- [ ] **Review Page Item Removal:** Implement logic in `FaceReviewPage` to remove a specific `QListWidgetItem` (and its associated widget) when notified by the popup (or potentially by `ReviewManager` if it emits an `item_removed` signal).
 - [ ] **Review Popup Navigation Hotkeys (Basic):** Implement Up/Down/PgUp/PgDn hotkey handling in `keyPressEvent`:
-    - [ ] Close the current dialog (`self.reject()` or `self.done(QDialog.Rejected)`).
+    - [ ] Signal the `FaceReviewPage` to select the previous/next item.
     - [ ] Emit signals (e.g., `navigate_previous`, `navigate_next`) from the dialog.
 - [ ] **Review Page Navigation Logic:** Connect the navigation signals. Implement methods on `FaceReviewPage` to:
     - [ ] Get the current selection index in the `QListWidget`.
@@ -572,10 +642,10 @@ This section outlines the detailed steps required to implement the AI Face Swap 
         - [x] If URL found, use `requests` to fetch the `.webp` image bytes. *(Done)*
         - [x] Use `Pillow` to open the `.webp` image bytes, convert to RGB, and save as JPG to `<AI Root Directory>/Temp/` with the correct naming convention (e.g., 75% quality). Handle image processing/saving errors. *(Done, including filename fix)*
         - [x] Emit `task_complete` or `task_failed` signal with relevant info... *(Done)*
-        - [ ] **Notify Manager:** After successful save, notify the central task manager... *(Worker emits signal, but manager lacks source completion logic)*
+        - [x] **Notify Manager:** After successful save, notify the central task manager... *(Worker emits `task_complete` signal, received by `FaceSwapManager`)*
     - [x] **Worker Cleanup:** Ensure `driver.quit()` is called in a `finally` block within the `run` method... *(Done)*
     - [x] Emit `finished` signal when the `run` method exits. *(Done)*
-- [ ] **Task Manager Logic:**
-    - [ ] Implement the method to receive notifications from workers. *(Partially done - slots exist, but source completion logic missing)*
-    - [ ] Track completed tasks for each source image. *(Not done)*
-    - [ ] When all faces for a given source image are reported as complete, move the original `source_image` file from `SourceImages/` to `SourceImages/Completed/` and log this action. *(Not done)*
+- [ ] **Task Manager Logic:** *(Responsibilities now split between FaceSwapManager and ReviewManager)*
+    - [x] Implement the method to receive notifications from workers. *(`FaceSwapManager._on_task_complete` exists)*
+    - [x] Track completed tasks for each source image. *(Done in `FaceSwapManager._source_image_progress`)*
+    - [x] When all faces for a given source image are reported as complete, move the original `source_image` file from `SourceImages/` to `SourceImages/Completed/` and log this action. *(Done by `ReviewManager.add_pending_review` after notification from `FaceSwapManager`)*

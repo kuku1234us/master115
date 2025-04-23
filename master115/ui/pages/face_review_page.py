@@ -2,14 +2,19 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, 
     QSizePolicy, QFrame, QAbstractItemView, QListView
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSlot
 from pathlib import Path
+from typing import Optional
 
 # Framework imports
 from qt_base_app.models import SettingsManager, Logger, SettingType
+from qt_base_app.theme import ThemeManager
+from master115.models.review_manager import ReviewManager
 
 # Component Imports
 from ..faceswap_components.review_queue_item import ReviewQueueItem
+from ..components.round_button import RoundButton
+from ..faceswap_components.review_popup_dialog import ReviewPopupDialog
 
 # Need PreferencesPage constants
 try:
@@ -29,6 +34,14 @@ class FaceReviewPage(QWidget):
         self.logger = Logger.instance()
         self.caller = "FaceReviewPage"
 
+        # Get the ReviewManager instance
+        self.theme = ThemeManager.instance()
+        self.review_manager = ReviewManager.instance()
+
+        # Store button reference
+        self.current_review_dialog: Optional[ReviewPopupDialog] = None
+        self.refresh_button: Optional[RoundButton] = None
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -46,106 +59,284 @@ class FaceReviewPage(QWidget):
         self.review_queue_list.setResizeMode(QListView.ResizeMode.Adjust)
         # Adjust spacing between items
         self.review_queue_list.setSpacing(10)
-        # Set selection mode (single selection is fine for now)
+        # Set selection mode and behavior
         self.review_queue_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.review_queue_list.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         # Ensure items are not draggable/movable by default
         self.review_queue_list.setMovement(QListView.Movement.Static)
 
         # TODO: Connect itemClicked signal later for popup
-        # self.review_queue_list.itemClicked.connect(self._on_item_clicked)
+        self.review_queue_list.itemClicked.connect(self._on_review_item_clicked)
+
+        # --- Apply Custom Styling for Selection --- #
+        # sidebar_bg = self.theme.get_color('background', 'sidebar') # No longer needed for selection
+        alt_row_bg = self.theme.get_color('background', 'alternate_row') # Get alternate row color
+        secondary_bg = self.theme.get_color('background', 'secondary')
+        text_color = self.theme.get_color('text', 'primary')
+        border_color = self.theme.get_color('border', 'primary')
+
+        stylesheet = f"""
+            QListWidget {{
+                background-color: {secondary_bg};
+                border: 1px solid {border_color};
+                border-radius: 4px;
+            }}
+            QListWidget::item {{
+                /* Reset border/background for non-selected items */
+                border: none; 
+                background-color: transparent; 
+                padding: 5px; /* Add some padding around items */
+                border-radius: 4px; /* Match parent border-radius */
+            }}
+            QListWidget::item:selected {{ 
+                background-color: {alt_row_bg}; /* Use alternate row color for selection */
+                color: {text_color};
+            }}
+            QListWidget::item:hover:!selected {{
+                 background-color: {self.theme.get_color('background', 'hover')}; /* Optional: hover effect */
+            }}
+        """
+        self.review_queue_list.setStyleSheet(stylesheet)
+        # ------------------------------------------ #
 
         layout.addWidget(self.review_queue_list)
+
+        # --- Add Refresh Button (Overlay) --- #
+        self.refresh_button = RoundButton(
+            parent=self.review_queue_list, # Parent for positioning
+            icon_name='fa5s.sync-alt',
+            size=36, # Slightly smaller size for overlay
+            icon_size=18,
+            bg_opacity=0.7
+        )
+        self.refresh_button.setToolTip("Refresh Review List")
+        self.refresh_button.clicked.connect(self._load_review_items)
+        self.refresh_button.show() # Ensure it's visible
+        # Initial positioning will be handled by resizeEvent
+        # ------------------------------------ #
+
+        # --- Connect to ReviewManager signal --- #
+        self.review_manager.review_item_added.connect(self._on_review_item_added)
+        # -------------------------------------- #
 
         self.setLayout(layout)
 
     def showEvent(self, event):
         """Override showEvent to reload results when the page becomes visible."""
         super().showEvent(event)
+        # Trigger initial position update for the button
+        self._position_refresh_button()
         self.logger.debug(self.caller, "Page shown, loading review items...")
         self._load_review_items()
 
+    def resizeEvent(self, event):
+        """Override resizeEvent to reposition the refresh button."""
+        super().resizeEvent(event)
+        self._position_refresh_button()
+
+    def _position_refresh_button(self):
+        """Positions the refresh button in the bottom-right corner of the list widget."""
+        if not self.refresh_button:
+            return
+            
+        list_widget_size = self.review_queue_list.size()
+        button_size = self.refresh_button.size()
+        margin = 10 # Margin from the edges
+
+        # Calculate position
+        x = list_widget_size.width() - button_size.width() - margin
+        y = list_widget_size.height() - button_size.height() - margin
+
+        self.refresh_button.move(x, y)
+
     def _load_review_items(self):
-        """Scans the Temp directory, groups results, and populates the list widget."""
+        """Loads pending review items from the ReviewManager and populates the list."""
         self.review_queue_list.clear()
 
-        ai_root_raw = self.settings.get(PreferencesPage.AI_ROOT_DIR_KEY, PreferencesPage.DEFAULT_AI_ROOT_DIR, SettingType.PATH)
-        if not ai_root_raw:
-            self.logger.warn(self.caller, "AI Root Directory not set.")
-            # TODO: Optionally display a message in the list widget area
-            return
+        # --- Get data from ReviewManager --- #
+        pending_reviews = ReviewManager.instance().get_pending_reviews()
+        # --------------------------------- #
 
-        ai_root_path = Path(ai_root_raw)
-        temp_dir = ai_root_path / "Temp"
-
-        if not temp_dir.is_dir():
-            self.logger.warn(self.caller, f"Temp directory not found: {temp_dir}")
-            # TODO: Optionally display a message
-            return
-
-        self.logger.info(self.caller, f"Scanning for review items in: {temp_dir}")
-        
-        # Group files by (Person_Name, Source_Filename)
-        results_by_group = {}
-        try:
-            for item in temp_dir.glob("*.jpg"): # Assuming JPG results for now
-                if item.is_file():
-                    filename = item.name
-                    parts = filename.split(' ', 2) # Split into Person, Face, Source parts
-                    if len(parts) >= 3:
-                        person_name = parts[0]
-                        # Reconstruct source filename potentially containing spaces
-                        # Find the last occurrence of a known image extension to split source and face
-                        source_and_face = parts[1:]
-                        source_filename_parts = []
-                        face_filename = "" # Should be parts[1]
-                        # This parsing logic might need refinement if filenames are complex
-                        # For now, assume simple: Person Face Source.jpg
-                        face_filename = parts[1]
-                        source_filename_parts = parts[2].rsplit('.', 1) # Remove .jpg
-                        if len(source_filename_parts) > 0:
-                            source_filename = source_filename_parts[0]
-                        else:
-                            self.logger.warn(self.caller, f"Could not parse source filename from: {filename}")
-                            continue # Skip this file
-
-                        group_key = (person_name, source_filename)
-                        if group_key not in results_by_group:
-                            results_by_group[group_key] = []
-                        results_by_group[group_key].append(str(item.resolve()))
-                    else:
-                        self.logger.warn(self.caller, f"Skipping file with unexpected naming format: {filename}")
-        except OSError as e:
-            self.logger.error(self.caller, f"Error scanning Temp directory {temp_dir}: {e}")
-            # TODO: Optionally display an error message
-            return
-
-        if not results_by_group:
-            self.logger.info(self.caller, "No items found in Temp directory for review.")
+        if not pending_reviews:
+            self.logger.info(self.caller, "No items pending review found by ReviewManager.")
             # TODO: Optionally display 'No items to review' message
             return
 
-        self.logger.info(self.caller, f"Found {len(results_by_group)} groups to review. Populating list.")
+        self.logger.info(self.caller, f"Found {len(pending_reviews)} items pending review. Populating list.")
 
         # Populate the list widget
-        for (person_name, source_filename), result_files in sorted(results_by_group.items()):
+        # The data is now a list of dicts from ReviewManager
+        # Sort by original source path for consistent ordering
+        for review_item in sorted(pending_reviews, key=lambda x: x.get('original_source_path', '_')):
+            original_source_path = review_item.get('original_source_path')
+            result_files = review_item.get('result_image_paths', [])
+
+            if not original_source_path or not result_files:
+                self.logger.warn(self.caller, f"Skipping invalid review item: {review_item}")
+                continue
+
+            # --- Infer Person Name and Source Filename from Result Paths --- #
+            # This assumes the naming convention: Person Face_Stem Source_Stem.jpg
+            first_result_name = Path(result_files[0]).name
+            parts = first_result_name.split(' ', 2) 
+            person_name = "Unknown" # Default
+            source_filename_stem = "Unknown" # Default
+            if len(parts) >= 3:
+                person_name = parts[0]
+                # Try to extract source stem - fragile if names have many spaces
+                try:
+                    source_filename_stem = parts[2].rsplit('.', 1)[0] 
+                except IndexError:
+                    pass # Keep default if rsplit fails
+            else:
+                 self.logger.warn(self.caller, f"Could not reliably parse person/source from result: {first_result_name}")
+            # ----------------------------------------------------------- #
+
             # Create the custom widget
-            item_widget = ReviewQueueItem(person_name, source_filename, sorted(result_files))
+            item_widget = ReviewQueueItem(person_name, source_filename_stem, result_files)
 
             # Create a QListWidgetItem
             list_item = QListWidgetItem(self.review_queue_list) # Add item to list
             # Set the size hint for the list item based on the widget's size
             list_item.setSizeHint(item_widget.sizeHint())
-            # Store data if needed (e.g., for sorting or filtering later)
-            # list_item.setData(Qt.ItemDataRole.UserRole, {"person": person_name, "source": source_filename})
+            # Store the full review item dictionary for later retrieval on click
+            list_item.setData(Qt.ItemDataRole.UserRole, review_item)
 
             # Associate the custom widget with the list item
             self.review_queue_list.addItem(list_item)
             self.review_queue_list.setItemWidget(list_item, item_widget)
 
-    # TODO: Implement _on_item_clicked method to handle popup dialog
-    # def _on_item_clicked(self, item: QListWidgetItem):
-    #     widget = self.review_queue_list.itemWidget(item)
-    #     if isinstance(widget, ReviewQueueItem):
-    #         self.logger.debug(self.caller, f"Clicked: {widget.get_person_name()} on {widget.get_source_filename()}")
-    #         # --- Trigger Popup Dialog Here --- #
-    #         pass # Placeholder for Milestone 3 
+    @pyqtSlot(dict)
+    def _on_review_item_added(self, review_item: dict):
+        """Adds a single new item widget to the list when signaled by ReviewManager."""
+        self.logger.debug(self.caller, f"Received signal for new review item: {review_item.get('original_source_path')}")
+
+        original_source_path = review_item.get('original_source_path')
+        result_files = review_item.get('result_image_paths', [])
+
+        if not original_source_path or not result_files:
+            self.logger.warn(self.caller, f"Skipping invalid review item received via signal: {review_item}")
+            return
+
+        # --- Infer Person Name and Source Filename from Result Paths (same logic as load) --- #
+        first_result_name = Path(result_files[0]).name
+        parts = first_result_name.split(' ', 2)
+        person_name = "Unknown"
+        source_filename_stem = "Unknown"
+        if len(parts) >= 3:
+            person_name = parts[0]
+            try:
+                source_filename_stem = parts[2].rsplit('.', 1)[0]
+            except IndexError:
+                pass
+        else:
+             self.logger.warn(self.caller, f"Could not reliably parse person/source from result: {first_result_name}")
+        # ----------------------------------------------------------- #
+
+        # Create the custom widget
+        item_widget = ReviewQueueItem(person_name, source_filename_stem, result_files)
+
+        # Create a QListWidgetItem
+        list_item = QListWidgetItem(self.review_queue_list) # Add item to list
+        list_item.setSizeHint(item_widget.sizeHint())
+
+        # Store the full review item dictionary (same as in _load_review_items)
+        list_item.setData(Qt.ItemDataRole.UserRole, review_item)
+
+        # Associate the custom widget with the list item
+        # Note: addItem might be sufficient if adding at the end is acceptable
+        # self.review_queue_list.addItem(list_item) 
+        self.review_queue_list.setItemWidget(list_item, item_widget)
+        # Consider inserting in sorted order if needed, though load on show handles that.
+
+    def _on_review_item_clicked(self, item: QListWidgetItem):
+        """Opens the ReviewPopupDialog for the clicked item."""
+        if self.current_review_dialog and self.current_review_dialog.isVisible():
+            self.logger.warn(self.caller, "Review dialog is already open.")
+            self.current_review_dialog.raise_() # Bring existing dialog to front
+            self.current_review_dialog.activateWindow()
+            return
+
+        review_item_data = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(review_item_data, dict):
+            self.logger.error(self.caller, f"Clicked item missing or has invalid data: {review_item_data}")
+            # Maybe show a status bar message?
+            return
+
+        self.logger.debug(self.caller, f"Opening review dialog for: {review_item_data.get('original_source_path')}")
+        
+        # Create and execute the dialog
+        self.current_review_dialog = ReviewPopupDialog(review_item_data, parent=self)
+        # Connect dialog signals to handler methods
+        self.current_review_dialog.review_complete.connect(self._handle_review_complete)
+        self.current_review_dialog.navigate_next.connect(self._navigate_next_item)
+        self.current_review_dialog.navigate_previous.connect(self._navigate_previous_item)
+        
+        result = self.current_review_dialog.exec()
+        # Dialog is closed now
+        self.logger.debug(self.caller, f"Review dialog closed with result: {result}")
+        self.current_review_dialog = None # Clear reference
+
+    def _navigate_next_item(self):
+        """Navigate to the next item in the review queue."""
+        self.logger.debug(self.caller, "Navigating to next review item")
+        
+        # If there are no items, we're done
+        if self.review_queue_list.count() == 0:
+            if self.current_review_dialog:
+                self.current_review_dialog.accept() # Close dialog
+            return
+        
+        # Get current selected item index
+        current_row = -1
+        current_items = self.review_queue_list.selectedItems()
+        if current_items:
+            current_row = self.review_queue_list.row(current_items[0])
+        
+        # Calculate next row with wrap-around
+        next_row = (current_row + 1) % self.review_queue_list.count()
+        
+        # Select the next item
+        next_item = self.review_queue_list.item(next_row)
+        if next_item:
+            self.review_queue_list.setCurrentItem(next_item)
+            # Close current dialog if open
+            if self.current_review_dialog:
+                self.current_review_dialog.accept()
+            # Open new dialog for the next item
+            self._on_review_item_clicked(next_item)
+
+    def _navigate_previous_item(self):
+        """Navigate to the previous item in the review queue."""
+        self.logger.debug(self.caller, "Navigating to previous review item")
+        
+        # If there are no items, we're done
+        if self.review_queue_list.count() == 0:
+            if self.current_review_dialog:
+                self.current_review_dialog.accept() # Close dialog
+            return
+        
+        # Get current selected item index
+        current_row = -1
+        current_items = self.review_queue_list.selectedItems()
+        if current_items:
+            current_row = self.review_queue_list.row(current_items[0])
+        
+        # Calculate previous row with wrap-around
+        prev_row = (current_row - 1) % self.review_queue_list.count()
+        
+        # Select the previous item
+        prev_item = self.review_queue_list.item(prev_row)
+        if prev_item:
+            self.review_queue_list.setCurrentItem(prev_item)
+            # Close current dialog if open
+            if self.current_review_dialog:
+                self.current_review_dialog.accept()
+            # Open new dialog for the previous item
+            self._on_review_item_clicked(prev_item)
+
+    def _handle_review_complete(self, original_source_path: str):
+        """Handle completion of review for an item."""
+        self.logger.debug(self.caller, f"Review completed for: {original_source_path}")
+        # TODO: Implement full logic for handling review completion
+        # This method will be implemented more fully when '+' key functionality is completed

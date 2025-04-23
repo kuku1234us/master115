@@ -1,12 +1,15 @@
 import threading
+import json
+import shutil
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 
 from PyQt6.QtCore import QObject, pyqtSignal, QThread, pyqtSlot
 
 from .face_swap_models import PersonData, FaceData, SourceImageData, SwapTaskData
 from .face_swap_worker import FaceSwapWorker
 from .people_manager import PeopleManager
+from .review_manager import ReviewManager
 from qt_base_app.models import Logger, SettingsManager, SettingType
 
 VALID_IMAGE_EXTENSIONS = ["*.jpg", "*.png", "*.jpeg", "*.gif"]
@@ -14,7 +17,7 @@ VALID_IMAGE_EXTENSIONS = ["*.jpg", "*.png", "*.jpeg", "*.gif"]
 class FaceSwapManager(QObject):
     """
     Manages the face swap automation pipeline, including worker creation,
-    lifecycle, and communication with the UI.
+    lifecycle, communication with the UI, and tracking completion status.
     """
 
     # --- Signals --- #
@@ -39,6 +42,12 @@ class FaceSwapManager(QObject):
         self._worker_threads: List[QThread] = []
         self._active_worker_count = 0
         self._stop_event: Optional[threading.Event] = None
+        
+        # --- Completion Tracking --- #
+        self._progress_lock = threading.Lock() # Lock for accessing progress tracker
+        # Structure: {source_path: {'total_faces': int, 'completed_faces': set(), 'result_paths': set()}}
+        self._source_image_progress: Dict[Path, Dict[str, Set[str] | int]] = {} 
+        # -------------------------- #
 
     def is_running(self) -> bool:
         """Returns True if the automation process is currently active."""
@@ -61,7 +70,7 @@ class FaceSwapManager(QObject):
             self.log_message.emit("Error: AI Root Directory is not set or invalid. Please check Preferences.")
             self.logger.error(self.caller, "AI Root Directory invalid or not set.")
             return
-
+            
         # 2. Get All Source Images
         all_source_images = self._get_all_source_images(ai_root_path) # Use internal method
         if not all_source_images:
@@ -87,6 +96,18 @@ class FaceSwapManager(QObject):
              missing_faces_names = [p.name for p in selected_persons_data if not p.faces]
              self.log_message.emit(f"Warning: Skipping selected persons with no faces: {', '.join(missing_faces_names)}")
              self.logger.warn(self.caller, f"Skipping selected persons with no faces: {missing_faces_names}")
+             
+        # --- Calculate total faces to process for tracking --- #
+        all_selected_faces = set()
+        for person in valid_selected_persons:
+            for face in person.faces:
+                all_selected_faces.add(face.filename) # Use filename as unique identifier
+        total_faces_to_process = len(all_selected_faces)
+        if total_faces_to_process == 0:
+             self.log_message.emit("Error: No valid face files found for any selected person.")
+             self.logger.error(self.caller, "Calculated 0 total faces to process.")
+             return
+        # --------------------------------------------------- #
 
         # 4. Prepare for Workers
         temp_output_dir = ai_root_path / "Temp"
@@ -103,11 +124,22 @@ class FaceSwapManager(QObject):
         self._worker_threads.clear()
         self._active_worker_count = 0
         self._stop_event = threading.Event()
+        
+        # --- Initialize progress tracking --- #
+        with self._progress_lock:
+            self._source_image_progress.clear()
+            for src_img in all_source_images:
+                self._source_image_progress[src_img.path] = {
+                    'total_faces': total_faces_to_process,
+                    'completed_faces': set(), # Store completed face filenames
+                    'result_paths': set()     # Store paths to generated temp files
+                }
+        # --------------------------------- #
 
         self.logger.info(self.caller, f"Preparing to start workers. Persons: {len(valid_selected_persons)}, Sources: {len(all_source_images)}")
         total_workers_to_start = sum(len(person.faces) for person in valid_selected_persons)
         self.log_message.emit(f"Starting automation... Found {len(all_source_images)} source images.")
-        self.log_message.emit(f"Processing faces for {len(valid_selected_persons)} selected persons. Total workers: {total_workers_to_start}")
+        self.log_message.emit(f"Processing faces for {len(valid_selected_persons)} selected persons ({total_faces_to_process} unique faces). Total workers: {total_workers_to_start}")
 
         # 5. Create and Start Workers
         for person in valid_selected_persons:
@@ -132,7 +164,7 @@ class FaceSwapManager(QObject):
                 # Setup cleanup connections
                 worker.finished.connect(thread.quit)
                 # Delete worker when thread finishes cleanly
-                thread.finished.connect(worker.deleteLater)
+                thread.finished.connect(worker.deleteLater) # <-- Important for cleanup
 
                 self._workers.append(worker)
                 self._worker_threads.append(thread)
@@ -216,8 +248,17 @@ class FaceSwapManager(QObject):
             for ext in VALID_IMAGE_EXTENSIONS:
                 for img_path in source_dir.glob(ext):
                     # Skip if it's inside the Completed subdirectory
-                    if completed_dir.is_dir() and completed_dir in img_path.parents:
-                        continue
+                    is_in_completed = False
+                    try:
+                        # Check if completed_dir is an ancestor of img_path
+                         if completed_dir.is_dir() and completed_dir.resolve() in img_path.resolve().parents:
+                              is_in_completed = True
+                    except Exception as e:
+                        self.logger.warn(self.caller, f"Error checking if path {img_path} is in {completed_dir}: {e}")
+
+                    if is_in_completed:
+                         continue
+
                     if img_path.is_file():
                         source_images.append(SourceImageData(path=img_path))
         except OSError as e:
@@ -237,17 +278,72 @@ class FaceSwapManager(QObject):
         """Handles completion of a single task from a worker."""
         # --- Logic moved from FaceDashboardPage --- #
         try:
-            source_name = task.source_image.filename if task.source_image else "Unknown Source"
-            person_name = task.person.name if task.person else "Unknown Person"
-            face_name = task.face.filename if task.face else "Unknown Face"
-            msg = f"Swap complete for {person_name}/{face_name} on {source_name}. -> Temp/{Path(output_path).name}"
-            # Signal the concise message to the UI log
+            source_path = task.source_image.path
+            face_filename = task.face.filename # Identifier for the face
+            person_name = task.person.name 
+
+            # Log simple success message first
+            msg = f"Swap complete for {person_name}/{face_filename} on {task.source_image.filename}. -> Temp/{Path(output_path).name}"
             self.log_message.emit(f"✅ SUCCESS: {msg}")
             self.logger.info(self.caller, msg) # Log internally too
+            
+            # --- Update Progress & Check for Source Completion --- #
+            with self._progress_lock:
+                if source_path in self._source_image_progress:
+                    progress_data = self._source_image_progress[source_path]
+                    progress_data['completed_faces'].add(face_filename)
+                    progress_data['result_paths'].add(output_path) # Add path to generated result
+
+                    total_expected = progress_data['total_faces']
+                    currently_completed = len(progress_data['completed_faces'])
+
+                    self.logger.debug(self.caller, f"Progress for {source_path.name}: {currently_completed}/{total_expected} faces done.")
+
+                    if currently_completed >= total_expected:
+                        self.logger.info(self.caller, f"All {total_expected} faces completed for source: {source_path.name}. Handling completion...")
+                        # Call completion handler *within the lock*
+                        self._handle_source_completion(source_path, progress_data) 
+                else:
+                    # This shouldn't happen if initialization is correct
+                     self.logger.warn(self.caller, f"Received task_complete for untracked source: {source_path.name}")
+
+            # --- End of Progress Update --- #
+
         except Exception as e:
-            self.logger.error(self.caller, f"Error processing task_complete signal: {e}")
+            self.logger.error(self.caller, f"Error processing task_complete signal: {e}", exc_info=True)
             self.log_message.emit("[MANAGER ERROR] Error logging task completion details.")
         # --- End of moved logic ---
+        
+    def _handle_source_completion(self, source_path: Path, completed_data: dict):
+        """
+        Moves the source file and updates the pending review JSON.
+        MUST be called within the _progress_lock.
+        """
+        self.logger.debug(self.caller, f"Handling completion for: {source_path.name}")
+        ai_root_path = self.people_manager._get_ai_root()
+        if not ai_root_path:
+            self.logger.error(self.caller, "Cannot handle source completion, AI Root path not found.")
+            self.log_message.emit(f"[ERROR] Failed to move {source_path.name}: AI Root directory not set.")
+            return # Cannot proceed
+
+        try:
+            # --- Add to Pending Review Manager --- #
+            ReviewManager.instance().add_pending_review(
+                original_source_path=source_path,
+                result_paths=completed_data['result_paths']
+            )
+            # --------------------------------------- #
+
+            # Remove from in-memory tracker *only after successful move and JSON update*
+            if source_path in self._source_image_progress:
+                del self._source_image_progress[source_path]
+                self.logger.debug(self.caller, f"Removed {source_path.name} from active progress tracking.")
+
+        except Exception as e:
+            # Log errors specifically from ReviewManager call or dict removal
+            err_msg = f"Unexpected error during source completion handling (ReviewManager call or dict removal) for {source_path.name}: {e}"
+            self.logger.error(self.caller, err_msg, exc_info=True)
+            self.log_message.emit(f"[ERROR] {err_msg}")
 
     @pyqtSlot(SwapTaskData, str)
     def _on_task_failed(self, task: SwapTaskData, error: str):
@@ -261,8 +357,13 @@ class FaceSwapManager(QObject):
             # Signal the concise message to the UI log
             self.log_message.emit(f"❌ FAILED: {detailed_msg}")
             self.logger.error(self.caller, detailed_msg) # Log detailed error internally
+            
+            # Note: We are currently NOT decrementing the 'total_faces' or modifying
+            # the completion check based on failures. A source image will only be moved
+            # if ALL originally scheduled faces for it complete successfully.
+            
         except Exception as e:
-            self.logger.error(self.caller, f"Error processing task_failed signal: {e}")
+            self.logger.error(self.caller, f"Error processing task_failed signal: {e}", exc_info=True)
             self.log_message.emit("[MANAGER ERROR] Error logging task failure details.")
         # --- End of moved logic ---
 
@@ -289,24 +390,35 @@ class FaceSwapManager(QObject):
 
             # 2) Wait until *all* have actually terminated
             self.logger.debug(self.caller, "Waiting for all threads to terminate...")
+            all_terminated = True # Flag to track if all waited successfully
             for thread in self._worker_threads:
                 if thread.isRunning():
                     if not thread.wait(5000): # Wait up to 5 seconds
                         self.logger.warn(self.caller, f"Thread {thread} did not finish within the timeout after quit signal.")
-                    # else: # Debug log if needed
-                    #     self.logger.debug(self.caller, f"Thread {thread} finished cleanly after wait.")
-
-                # Optional: Destroy automatically after waiting
-                # Ensure deleteLater is called even if wait timed out or thread was already finished
+                        all_terminated = False
+                    else: # Debug log if needed
+                         self.logger.debug(self.caller, f"Thread {thread} finished cleanly after wait.")
+                # Schedule for deletion regardless of clean termination within wait
                 thread.deleteLater()
             # -------------------------------------------------------------------- #
 
-            self.logger.info(self.caller, "All QThreads have terminated cleanly.")
+            if all_terminated:
+                self.logger.info(self.caller, "All QThreads have terminated cleanly.")
+            else:
+                 self.logger.warn(self.caller, "Some QThreads did not terminate cleanly within the timeout.")
+
 
             # Log final status and cleanup state *after* threads are done
             final_message = "Process stopped gracefully." if self._stop_event and self._stop_event.is_set() else "All tasks completed."
-            self.log_message.emit(final_message)
+            # Check if any tasks are still pending (shouldn't be if count is 0, but safety check)
+            with self._progress_lock:
+                remaining_tasks = len(self._source_image_progress)
+            if remaining_tasks > 0 and not (self._stop_event and self._stop_event.is_set()):
+                 final_message += f" (Warning: {remaining_tasks} source images did not fully complete)."
+                 self.logger.warn(self.caller, f"Process finished, but {remaining_tasks} source images remain in progress tracker.")
 
+            self.log_message.emit(final_message)
+            
             self._cleanup_after_stop()
             self.process_finished.emit()
 
@@ -319,4 +431,18 @@ class FaceSwapManager(QObject):
         self._worker_threads.clear() # Should be empty if using deleteLater correctly
         self._active_worker_count = 0
         self._stop_event = None
+        # --- Clear progress tracker on cleanup --- #
+        with self._progress_lock:
+            self._source_image_progress.clear()
+        # ---------------------------------------- #
         self.logger.info(self.caller, "Manager internal state reset.") 
+
+    def _update_pending_review_json(self, original_path: Path, completed_path: Path, result_paths: Set[str]):
+        """
+        Reads, updates, and writes the PendingReview.json file.
+        MUST be called within the _progress_lock.
+        """
+        # Implementation of this method is not provided in the original file or the code block
+        # This method should be implemented to read, update, and write the PendingReview.json file
+        # based on the original_path, completed_path, and result_paths
+        pass 
