@@ -47,10 +47,17 @@ def initialize_chrome_driver(headless: bool = False) -> webdriver.Chrome | None:
         service = Service(executable_path=driver_path)
 
         # Configure Chrome options
-        options = Options()
+        options = webdriver.ChromeOptions()
+        # Add headless option if requested
         if headless:
-            options.add_argument("--headless")
-            options.add_argument("--disable-gpu") # Often needed for headless
+            options.add_argument('--headless')
+            options.add_argument('--window-size=1920,1080') # Often needed in headless
+        
+        # --- Disable GPU and WebGL as requested by user --- #
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-webgl')
+        # ---------------------------------------------------- #
+        
         options.add_argument("--no-sandbox") # Common requirement in some environments
         options.add_argument("--disable-dev-shm-usage") # Overcomes limited resource problems
         # options.add_argument("--window-size=1920,1080") # Optional: set window size
