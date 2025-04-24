@@ -561,57 +561,57 @@ This section outlines the detailed steps required to implement the AI Face Swap 
 
 *Goal: Enable clicking a thumbnail on the Review Page to open a functional popup dialog showing all results for that group, allowing selection via hotkeys, and implementing the approval/rejection logic.*
 
-- [ ] **Review Popup Dialog Skeleton:** Create `ReviewPopupDialog` class inheriting `QDialog` in `./master115/ui/faceswap_components/review_popup_dialog.py`. Configure it to be modal and resizable.
-- [ ] **Review Popup Layout:** Add a `QVBoxLayout`. Add a `QLabel` at the top for the title.
-- [ ] **Result Image Display Skeleton:** Create `ResultImageDisplay` class inheriting `QWidget` in `./master115/ui/faceswap_components/result_image_display.py`.
-- [ ] **Result Image Display UI:** Add a `QLabel` to `ResultImageDisplay` for the image (placeholder). Plan for overlay elements.
-- [ ] **Review Popup Scroll Area:** Add a `QScrollArea` to `ReviewPopupDialog`'s layout. Set its widgetResizable property to `True`. Create a container `QWidget` inside the scroll area with a `QHBoxLayout`.
-- [ ] **Review Page Click Interaction:** Connect the `itemClicked` signal of the `QListWidget` on `FaceReviewPage` to a slot/method.
-- [ ] **Review Page Popup Trigger:** In the `itemClicked` handler:
-    - [ ] Retrieve the stored group data (person, source, list of temp files) from the clicked `QListWidgetItem`.
-    - [ ] Create an instance of `ReviewPopupDialog`, passing this data.
-    - [ ] Show the dialog (`dialog.exec_()`).
-- [ ] **Review Popup Population Logic:**
-    - [ ] In `ReviewPopupDialog.__init__` (or a setup method), receive the group data.
-    - [ ] Set the dialog title `QLabel` text (e.g., "Reviewing: `<Person_Name>` on `<Source_Filename>`").
-    - [ ] Clear any existing widgets from the scroll area's `QHBoxLayout`.
-    - [ ] For each result file path in the received list (keeping track of index 0-N):
-        - [ ] Create an instance of `ResultImageDisplay`.
-        - [ ] Pass the image path and the index (0-N) to the `ResultImageDisplay` instance.
-        - [ ] Add the `ResultImageDisplay` instance to the `QHBoxLayout`.
-- [ ] **Result Image Display Loading:** Implement logic in `ResultImageDisplay` to load and display the image from the provided path in its `QLabel`, scaling appropriately (preserve aspect ratio).
-- [ ] **Result Image Display Overlays UI:** Implement the visual overlays within `ResultImageDisplay`.
-    - [ ] **Digit:** Draw the index + 1 (1-N) in a semi-transparent circle in a corner (e.g., top-left) using custom `paintEvent` or layered `QLabel`s.
-    - [ ] **Checkmark:** Prepare the checkmark overlay (e.g., semi-transparent green circle with a white checkmark) but keep it hidden initially.
-- [ ] **Result Image Display State:** Add state tracking (`self.is_approved = False`) and the result file path to `ResultImageDisplay`.
-- [ ] **Result Image Display Toggle:** Add a method (e.g., `toggle_approval`) to `ResultImageDisplay` that flips `self.is_approved` and shows/hides the checkmark overlay.
-- [ ] **Review Popup Hotkey Capture:** Override `keyPressEvent` in `ReviewPopupDialog`.
-- [ ] **Review Popup 0-9 Hotkey:** In `keyPressEvent`, if the key is a digit 1-9 (or 0 for 10th):
-    - [ ] Calculate the corresponding index (key - 1).
-    - [ ] Get the `ResultImageDisplay` widget at that index from the layout.
-    - [ ] If it exists, call its `toggle_approval()` method.
-- [ ] **Review Popup '+' Hotkey:** In `keyPressEvent`, if the key is '+':
-    - [ ] Identifies all "checked" images in the current view.
-    - [ ] Moves each checked image file from `<AI Root Directory>/Temp/` to `<AI Root Directory>/FaceSwapped/` (create `FaceSwapped/` if needed). Handle potential file errors.
-    - [ ] Deletes all "unchecked" image files for this group from `<AI Root Directory>/Temp/`.
-    - [ ] Signal the `ReviewManager` to remove the entry for the just-reviewed item (using its `original_source_path`).
-    - [ ] Signal the `FaceReviewPage` to remove the corresponding visual item from the main queue list.
-    - [ ] Attempt to find the *next* available review item in the `FaceReviewPage`'s list.
-    - [ ] If a next item is found:
-        - [ ] Clear the current content of the popup (title, displayed images).
-        - [ ] Load and display the data (title, result images) for the *next* review item within the *same* popup window.
-    - [ ] If no next item is found:
-        - [ ] Close the dialog (`self.accept()` or `self.done(QDialog.Accepted)`).
-- [ ] **Review Page Refresh:** Connect the `review_completed` signal from the dialog to the method on `FaceReviewPage` that scans `Temp/` and repopulates the `QListWidget`.
-- [ ] **Review Page Item Removal:** Implement logic in `FaceReviewPage` to remove a specific `QListWidgetItem` (and its associated widget) when notified by the popup (or potentially by `ReviewManager` if it emits an `item_removed` signal).
-- [ ] **Review Popup Navigation Hotkeys (Basic):** Implement Up/Down/PgUp/PgDn hotkey handling in `keyPressEvent`:
-    - [ ] Signal the `FaceReviewPage` to select the previous/next item.
-    - [ ] Emit signals (e.g., `navigate_previous`, `navigate_next`) from the dialog.
-- [ ] **Review Page Navigation Logic:** Connect the navigation signals. Implement methods on `FaceReviewPage` to:
-    - [ ] Get the current selection index in the `QListWidget`.
-    - [ ] Calculate the previous/next index (handle wrapping).
-    - [ ] Set the current index of the `QListWidget`.
-    - [ ] Trigger the logic to show the `ReviewPopupDialog` for the new index.
+- [x] **Review Popup Dialog Skeleton:** Create `ReviewPopupDialog` class inheriting `QDialog` in `./master115/ui/faceswap_components/review_popup_dialog.py`. Configure it to be modal and resizable.
+- [x] **Review Popup Layout:** Add a `QVBoxLayout`. Add a `QLabel` at the top for the title.
+- [x] **Result Image Display Skeleton:** Create `ResultImageDisplay` class inheriting `QWidget` in `./master115/ui/faceswap_components/result_image_display.py`.
+- [x] **Result Image Display UI:** Add a `QLabel` to `ResultImageDisplay` for the image (placeholder). Plan for overlay elements.
+- [x] **Review Popup Scroll Area:** Add a `QScrollArea` to `ReviewPopupDialog`'s layout. Set its widgetResizable property to `True`. Create a container `QWidget` inside the scroll area with a `QHBoxLayout`.
+- [x] **Review Page Click Interaction:** Connect the `itemClicked` signal of the `QListWidget` on `FaceReviewPage` to a slot/method.
+- [x] **Review Page Popup Trigger:** In the `itemClicked` handler:
+    - [x] Retrieve the stored group data (person, source, list of temp files) from the clicked `QListWidgetItem`.
+    - [x] Create an instance of `ReviewPopupDialog`, passing this data.
+    - [x] Show the dialog (`dialog.exec_()`).
+- [x] **Review Popup Population Logic:**
+    - [x] In `ReviewPopupDialog.__init__` (or a setup method), receive the group data.
+    - [x] Set the dialog title `QLabel` text (e.g., "Reviewing: `<Person_Name>` on `<Source_Filename>`").
+    - [x] Clear any existing widgets from the scroll area's `QHBoxLayout`.
+    - [x] For each result file path in the received list (keeping track of index 0-N):
+        - [x] Create an instance of `ResultImageDisplay`.
+        - [x] Pass the image path and the index (0-N) to the `ResultImageDisplay` instance.
+        - [x] Add the `ResultImageDisplay` instance to the `QHBoxLayout`.
+- [x] **Result Image Display Loading:** Implement logic in `ResultImageDisplay` to load and display the image from the provided path in its `QLabel`, scaling appropriately (preserve aspect ratio).
+- [x] **Result Image Display Overlays UI:** Implement the visual overlays within `ResultImageDisplay`.
+    - [x] **Digit:** Draw the index + 1 (1-N) in a semi-transparent circle in a corner (e.g., top-left) using custom `paintEvent` or layered `QLabel`s.
+    - [x] **Checkmark:** Prepare the checkmark overlay (e.g., semi-transparent green circle with a white checkmark) but keep it hidden initially.
+- [x] **Result Image Display State:** Add state tracking (`self.is_approved = False`) and the result file path to `ResultImageDisplay`.
+- [x] **Result Image Display Toggle:** Add a method (e.g., `toggle_approval`) to `ResultImageDisplay` that flips `self.is_approved` and shows/hides the checkmark overlay.
+- [x] **Review Popup Hotkey Capture:** Override `keyPressEvent` in `ReviewPopupDialog`.
+- [x] **Review Popup 0-9 Hotkey:** In `keyPressEvent`, if the key is a digit 1-9 (or 0 for 10th):
+    - [x] Calculate the corresponding index (key - 1).
+    - [x] Get the `ResultImageDisplay` widget at that index from the layout.
+    - [x] If it exists, call its `toggle_approval()` method.
+- [x] **Review Popup '+' Hotkey:** In `keyPressEvent`, if the key is '+':
+    - [x] Identifies all "checked" images in the current view.
+    - [x] Moves each checked image file from `<AI Root Directory>/Temp/` to `<AI Root Directory>/FaceSwapped/` (create `FaceSwapped/` if needed). Handle potential file errors.
+    - [x] Deletes all "unchecked" image files for this group from `<AI Root Directory>/Temp/`.
+    - [x] Signal the `ReviewManager` to remove the entry for the just-reviewed item (using its `original_source_path`).
+    - [x] Signal the `FaceReviewPage` to remove the corresponding visual item from the main queue list.
+    - [x] Attempt to find the *next* available review item in the `FaceReviewPage`'s list.
+    - [x] If a next item is found:
+        - [x] Clear the current content of the popup (title, displayed images).
+        - [x] Load and display the data (title, result images) for the *next* review item within the *same* popup window.
+    - [x] If no next item is found:
+        - [x] Close the dialog (`self.accept()` or `self.done(QDialog.Accepted)`).
+- [x] **Review Page Refresh:** Connect the `review_completed` signal from the dialog to the method on `FaceReviewPage` that scans `Temp/` and repopulates the `QListWidget`.
+- [x] **Review Page Item Removal:** Implement logic in `FaceReviewPage` to remove a specific `QListWidgetItem` (and its associated widget) when notified by the popup (or potentially by `ReviewManager` if it emits an `item_removed` signal).
+- [x] **Review Popup Navigation Hotkeys (Basic):** Implement Up/Down/PgUp/PgDn hotkey handling in `keyPressEvent`:
+    - [x] Signal the `FaceReviewPage` to select the previous/next item.
+    - [x] Emit signals (e.g., `navigate_previous`, `navigate_next`) from the dialog.
+- [x] **Review Page Navigation Logic:** Connect the navigation signals. Implement methods on `FaceReviewPage` to:
+    - [x] Get the current selection index in the `QListWidget`.
+    - [x] Calculate the previous/next index (handle wrapping).
+    - [x] Set the current index of the `QListWidget`.
+    - [x] Trigger the logic to show the `ReviewPopupDialog` for the new index.
 
 ### Milestone 4: Full Automation Logic, Scaling, and Refinement
 

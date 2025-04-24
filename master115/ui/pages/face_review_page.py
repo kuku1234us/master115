@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSlot
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 # Framework imports
 from qt_base_app.models import SettingsManager, Logger, SettingType
@@ -117,6 +117,8 @@ class FaceReviewPage(QWidget):
 
         # --- Connect to ReviewManager signal --- #
         self.review_manager.review_item_added.connect(self._on_review_item_added)
+        # Connect removed signal
+        self.review_manager.review_item_removed.connect(self._handle_review_item_removed)
         # -------------------------------------- #
 
         self.setLayout(layout)
@@ -249,6 +251,89 @@ class FaceReviewPage(QWidget):
         self.review_queue_list.setItemWidget(list_item, item_widget)
         # Consider inserting in sorted order if needed, though load on show handles that.
 
+    @pyqtSlot(str, list, list)
+    def _handle_review_processed(self, original_source_path: str, approved_paths: List[str], unapproved_paths: List[str]):
+        """Receives review decision from dialog and calls ReviewManager."""
+        self.logger.debug(self.caller, f"Review decision received for {original_source_path}. Approved: {len(approved_paths)}, Unapproved: {len(unapproved_paths)}")
+        # Call the manager to process the decision and handle files/JSON
+        self.review_manager.process_review_decision(
+            original_source_path,
+            approved_paths,
+            unapproved_paths
+        )
+        # The manager will emit review_item_removed if successful
+
+    @pyqtSlot(str)
+    def _handle_review_item_removed(self, original_source_path: str):
+        """Removes the corresponding item from the UI list after manager confirms removal."""
+        self.logger.debug(self.caller, f"Received confirmation to remove item {original_source_path} from UI.")
+        item_to_remove = None
+        row_to_remove = -1
+        for row in range(self.review_queue_list.count()):
+            item = self.review_queue_list.item(row)
+            if item:
+                item_data = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(item_data, dict) and item_data.get('original_source_path') == original_source_path:
+                    item_to_remove = item
+                    row_to_remove = row
+                    break
+        
+        if item_to_remove is not None and row_to_remove != -1:
+            self.logger.info(self.caller, f"Removing item {Path(original_source_path).name} from list widget.")
+            # Remove the item from the list widget
+            self.review_queue_list.takeItem(row_to_remove)
+            # Automatically navigate to the next item
+            self.logger.debug(self.caller, "Item removed, navigating to next review item.")
+            # Need to ensure the removed item isn't selected before navigating
+            # It might be safer to recalculate next based on remaining items
+            self._navigate_to_next_available(row_to_remove) # Use a helper to find next available
+        else:
+            self.logger.warn(self.caller, f"Could not find item {original_source_path} in list widget to remove.")
+
+    def _navigate_to_next_available(self, removed_row_index: int):
+        """Finds and navigates to the next item after one was removed, wrapping around."""
+        count = self.review_queue_list.count()
+        if count == 0:
+            self.logger.debug(self.caller, "No more items to review.")
+            # If dialog is somehow still open, close it
+            if self.current_review_dialog and self.current_review_dialog.isVisible():
+                self.current_review_dialog.accept()
+            return
+            
+        # Calculate the next index with wrap-around
+        # If removed_row_index was the last item (index count before removal), 
+        # removed_row_index % count will be 0, wrapping to the start.
+        # Otherwise, it stays at the same index, which now holds the next item.
+        next_row = removed_row_index % count 
+        
+        next_item = self.review_queue_list.item(next_row)
+        if next_item:
+            review_item_data = next_item.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(review_item_data, dict):
+                self.logger.error(self.caller, f"Next item at index {next_row} has invalid data.")
+                # Fallback: Close the dialog if data is bad
+                if self.current_review_dialog and self.current_review_dialog.isVisible():
+                    self.current_review_dialog.reject()
+                return
+
+            # Check if the dialog we were just in is still open
+            if self.current_review_dialog and self.current_review_dialog.isVisible():
+                 self.logger.debug(self.caller, f"Updating existing review dialog with item at index {next_row}.")
+                 self.current_review_dialog.load_review_item(review_item_data)
+                 self.review_queue_list.setCurrentItem(next_item) # Ensure list selection matches
+            else:
+                 # Dialog wasn't open, so open it normally (this path shouldn't be hit after '+' typically)
+                 self.logger.debug(self.caller, f"No dialog open, opening new one for item at index {next_row}.")
+                 self.review_queue_list.setCurrentItem(next_item)
+                 self._on_review_item_clicked(next_item) # Call the original click handler
+
+        else:
+            # Should not happen if count > 0
+            self.logger.error(self.caller, f"Could not find next item at index {next_row} after removal.")
+            # Fallback: Close the dialog if item not found
+            if self.current_review_dialog and self.current_review_dialog.isVisible():
+                self.current_review_dialog.reject()
+
     def _on_review_item_clicked(self, item: QListWidgetItem):
         """Opens the ReviewPopupDialog for the clicked item."""
         if self.current_review_dialog and self.current_review_dialog.isVisible():
@@ -268,7 +353,7 @@ class FaceReviewPage(QWidget):
         # Create and execute the dialog
         self.current_review_dialog = ReviewPopupDialog(review_item_data, parent=self)
         # Connect dialog signals to handler methods
-        self.current_review_dialog.review_complete.connect(self._handle_review_complete)
+        self.current_review_dialog.review_processed.connect(self._handle_review_processed)
         self.current_review_dialog.navigate_next.connect(self._navigate_next_item)
         self.current_review_dialog.navigate_previous.connect(self._navigate_previous_item)
         
@@ -334,9 +419,3 @@ class FaceReviewPage(QWidget):
                 self.current_review_dialog.accept()
             # Open new dialog for the previous item
             self._on_review_item_clicked(prev_item)
-
-    def _handle_review_complete(self, original_source_path: str):
-        """Handle completion of review for an item."""
-        self.logger.debug(self.caller, f"Review completed for: {original_source_path}")
-        # TODO: Implement full logic for handling review completion
-        # This method will be implemented more fully when '+' key functionality is completed

@@ -3,6 +3,7 @@ import threading
 import shutil
 from pathlib import Path
 from typing import List, Dict, Set, Optional, Any
+from datetime import datetime # Needed for backup timestamp
 
 from PyQt6.QtCore import QObject, pyqtSignal
 from qt_base_app.models import Logger, SettingsManager, SettingType
@@ -19,6 +20,9 @@ class ReviewManager(QObject):
     # Signal emitted when a new item is successfully added and ready for review
     # Payload is the dictionary representing the added item
     review_item_added = pyqtSignal(dict)
+    # Signal emitted when an item is successfully processed and removed
+    # Payload is the original_source_path (string) of the removed item
+    review_item_removed = pyqtSignal(str)
 
     _instance = None
     _lock = threading.Lock()
@@ -219,6 +223,90 @@ class ReviewManager(QObject):
             else:
                  self.logger.warn(self.caller, f"Attempted to remove non-existent entry for {Path(original_source_path_str).name}.")
         return removed
+
+    def process_review_decision(self, original_source_path_str: str, approved_paths: List[str], unapproved_paths: List[str]):
+        """
+        Processes the user's review decision for a specific item:
+        - Moves approved files from Temp to FaceSwapped.
+        - Deletes unapproved files from Temp.
+        - Removes the item from the pending review list and JSON.
+        - Emits review_item_removed on success.
+        """
+        with self._lock:
+            # 1. Get AI Root and target directories
+            ai_root_path = self._get_ai_root_path()
+            if not ai_root_path:
+                self.logger.error(self.caller, f"Cannot process review decision for {original_source_path_str}: AI Root path invalid.")
+                return
+            face_swapped_dir = ai_root_path / "FaceSwapped"
+            temp_dir = ai_root_path / "Temp"
+
+            # Ensure FaceSwapped directory exists
+            try:
+                face_swapped_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                self.logger.error(self.caller, f"Could not ensure FaceSwapped directory {face_swapped_dir} exists: {e}")
+                return # Cannot proceed if destination doesn't exist
+
+            file_op_errors = 0
+            processed_item_name = Path(original_source_path_str).name
+
+            # 2. Perform file moves for approved files
+            for src_path_str in approved_paths:
+                try:
+                    src_path = Path(src_path_str)
+                    # Safety check: ensure source is in Temp
+                    if not temp_dir in src_path.parents:
+                         self.logger.warn(self.caller, f"Skipping approved move, file not in Temp: {src_path}")
+                         continue
+                    dest_path = face_swapped_dir / src_path.name
+                    self.logger.info(self.caller, f"Moving approved file for {processed_item_name}: {src_path.name} -> {face_swapped_dir.name}/")
+                    shutil.move(str(src_path), str(dest_path))
+                except (IOError, OSError, shutil.Error) as e:
+                    self.logger.error(self.caller, f"Error moving approved file {src_path}: {e}")
+                    file_op_errors += 1
+
+            # 3. Perform file deletions for unapproved files
+            for src_path_str in unapproved_paths:
+                try:
+                    src_path = Path(src_path_str)
+                    # Safety check: ensure source is in Temp
+                    if not temp_dir in src_path.parents:
+                         self.logger.warn(self.caller, f"Skipping unapproved delete, file not in Temp: {src_path}")
+                         continue
+                    if src_path.is_file(): # Check if it still exists (might have been moved if approved) - unlikely but safe
+                        self.logger.info(self.caller, f"Deleting unapproved file for {processed_item_name}: {src_path.name}")
+                        src_path.unlink()
+                    else:
+                         self.logger.warn(self.caller, f"Tried to delete unapproved file, but it was not found: {src_path}")
+                except (IOError, OSError) as e:
+                    self.logger.error(self.caller, f"Error deleting unapproved file {src_path}: {e}")
+                    file_op_errors += 1
+
+            # 4. Remove the item from pending reviews and save JSON
+            item_removed = False
+            initial_count = len(self._pending_reviews)
+            self._pending_reviews = [
+                item for item in self._pending_reviews
+                if item.get('original_source_path') != original_source_path_str
+            ]
+            if len(self._pending_reviews) < initial_count:
+                self.logger.info(self.caller, f"Removed entry for {processed_item_name} from pending reviews list.")
+                self._save_data()
+                item_removed = True
+            else:
+                 self.logger.warn(self.caller, f"Tried to remove entry for {processed_item_name}, but it was not found in list.")
+
+            # 5. Emit signal if item was successfully removed from list
+            if item_removed:
+                self.review_item_removed.emit(original_source_path_str)
+                if file_op_errors > 0:
+                     self.logger.warn(self.caller, f"Review processing complete for {processed_item_name} with {file_op_errors} file errors. Item removed from queue.")
+                else:
+                     self.logger.info(self.caller, f"Review processing complete for {processed_item_name}. Item removed from queue.")
+            else:
+                 # This case might indicate a logic error or race condition if the item *should* have been there
+                 self.logger.error(self.caller, f"Review decision processed for {processed_item_name}, but item was not found in the list for removal! File ops completed with {file_op_errors} errors.")
 
     def get_pending_reviews(self) -> List[Dict[str, Any]]:
         """Returns a copy of the list of items pending review."""

@@ -27,6 +27,8 @@ class ReviewPopupDialog(QDialog):
     # Signal indicating review is complete for the current item, 
     # providing the original source path to identify it for removal.
     review_complete = pyqtSignal(str)
+    # Signal with review decision data: original_source_path, approved_paths, unapproved_paths
+    review_processed = pyqtSignal(str, list, list)
 
     def __init__(self, review_item: Dict[str, Any], parent=None):
         """
@@ -251,23 +253,34 @@ class ReviewPopupDialog(QDialog):
             self.logger.debug(self.caller, f"Digit key {number} pressed, but no corresponding image found.")
 
     def _handle_plus_key(self):
-        """Handles the '+' key press: process approvals, deletions, and signal completion."""
-        self.logger.debug(self.caller, "'+' key pressed. Processing review...")
-        
-        # TODO:
-        # 1. Iterate through self.result_displays
-        # 2. Get approval state and image path for each
-        # 3. Perform file moves (Temp -> FaceSwapped) for approved
-        # 4. Perform file deletions (Temp) for unapproved
-        # 5. If successful, emit review_complete(self.original_source_path)
-        # 6. After emitting, attempt to load next item or close (logic handled by FaceReviewPage now based on our updated spec)
-        
-        # Placeholder: Signal completion immediately for now
+        """Handles the '+' key press: Gathers decisions and emits signal."""
+        self.logger.debug(self.caller, "'+' key pressed. Gathering review decisions...")
+
+        approved_result_paths: List[str] = []
+        unapproved_result_paths: List[str] = []
+
+        # 1. Iterate through displayed images and categorize paths
+        for display_widget in self.result_displays:
+            img_path_str = str(display_widget.get_image_path().resolve()) # Use resolved string path
+            if display_widget.get_approval_state():
+                approved_result_paths.append(img_path_str)
+            else:
+                unapproved_result_paths.append(img_path_str)
+
+        self.logger.debug(self.caller, f"Approved: {len(approved_result_paths)}, Unapproved: {len(unapproved_result_paths)}")
+
+        # 2. Emit signal with decisions
         if self.original_source_path:
-            self.review_complete.emit(self.original_source_path)
+            # Emit the signal with the original path and lists of result paths
+            self.review_processed.emit(
+                self.original_source_path,
+                approved_result_paths,
+                unapproved_result_paths
+            )
         else:
-            self.logger.error(self.caller, "Cannot emit review_complete, original_source_path is missing!")
-        # The FaceReviewPage will handle loading the next item or closing the dialog based on the new spec
+            self.logger.error(self.caller, "Cannot process review, original_source_path is missing!")
+            # Optionally show error to user
+            self.reject() # Close dialog on error
 
     def eventFilter(self, watched_object, event):
         """Filter events for child widgets to intercept navigation keys from scroll area."""
