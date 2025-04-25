@@ -349,12 +349,12 @@ Since the `task_complete` signal from `FaceSwapWorker` instances might arrive fr
                     2.  Fetch the raw `.webp` image **bytes** using `requests`.
                     3.  Use `Pillow` within the thread to:
                         -   Open the fetched `.webp` image data from bytes.
-                        -   Open the downloaded image data/file.
+                -   Open the downloaded image data/file.
                         -   Convert to 'RGB' mode (necessary for saving as standard JPEG).
-                        -   Construct the output filename: `<AI Root Directory>/Temp/<Person_Name> <Face_Filename> <Source_Filename>.jpg`.
+                -   Construct the output filename: `<AI Root Directory>/Temp/<Person_Name> <Face_Filename> <Source_Filename>.jpg`.
                         -   Save as JPEG to the `Temp/` directory with appropriate quality (e.g., 75%). This conversion is done locally primarily for broader compatibility with systems/apps that may not natively support `.webp`.
-                        -   Log success/failure to the main UI's Status Log Area (using thread-safe signals).
-             -   If the swap fails, log the error.
+                -   Log success/failure to the main UI's Status Log Area (using thread-safe signals).
+            -   If the swap fails, log the error.
     5.  **Post-Swap (Source Image):** *Coordination needed.* A mechanism is required to know when *all* assigned faces have been processed for a *single* source image. Only then should that source image be moved.
         -   **Coordination Idea:** A central manager object (thread-safe) could track `(source_image, person, face)` tasks. When a worker completes a task, it notifies the manager. The manager checks if all tasks for a given `source_image` are done. If so, it moves the `source_image` file from `SourceImages/` to `SourceImages/Completed/` and logs this action.
     6.  **Cleanup:** After the loop (normal completion or graceful stop), the worker thread must:

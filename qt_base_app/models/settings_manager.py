@@ -98,7 +98,11 @@ class SettingsManager:
         # Define keys consistently
         SettingsManager.AI_ROOT_DIR_KEY = 'ai/root_dir'
         SettingsManager.DEFAULT_AI_ROOT_DIR = str(Path.home() / "AIRoot") # Default to User's Home/AIRoot
-        
+        # --- Add Face Swap Specific Keys ---
+        SettingsManager.AI_FACE_SWAP_MOVE_SOURCE_KEY = 'ai/faceswap/move_source_to_completed'
+        SettingsManager.AI_FACE_SWAP_RUN_HEADLESS_KEY = 'ai/faceswap/run_headless'
+        # ---------------------------------
+
         # Default settings (for registry/QSettings) - AI defaults removed previously
         self._defaults = {
             'player/volume': (100, SettingType.INT),
@@ -109,7 +113,10 @@ class SettingsManager:
             'recent/playlists': ([], SettingType.LIST),
             # --- Add AI Root Default ---
             SettingsManager.AI_ROOT_DIR_KEY: (SettingsManager.DEFAULT_AI_ROOT_DIR, SettingType.PATH),
-            # -------------------------
+            # --- Add Face Swap Defaults ---
+            SettingsManager.AI_FACE_SWAP_MOVE_SOURCE_KEY: (True, SettingType.BOOL), # Default to moving files
+            SettingsManager.AI_FACE_SWAP_RUN_HEADLESS_KEY: (True, SettingType.BOOL),  # Default to running headless
+            # --------------------------
         }
         
         # Initialize QSettings with defaults if not set
@@ -242,20 +249,77 @@ class SettingsManager:
                 return bool(value)
             
         if setting_type:
+            # --- Path Validation Logic --- #
+            if setting_type == SettingType.PATH:
+                try:
+                    path_obj = Path(value) # Convert first
+                    if not path_obj.exists():
+                        # Use Logger if available, otherwise print
+                        msg = f"Path setting '{key}' does not exist: {path_obj}"
+                        try:
+                            Logger.instance().warning(self.__class__.__name__, msg)
+                        except Exception:
+                            print(f"[SettingsManager WARNING] {msg}")
+                        return None # Indicate invalid path
+                    if not path_obj.is_dir():
+                        msg = f"Path setting '{key}' is not a directory: {path_obj}"
+                        try:
+                            Logger.instance().warning(self.__class__.__name__, msg)
+                        except Exception:
+                            print(f"[SettingsManager WARNING] {msg}")
+                        return None # Indicate invalid path
+                    # Path is valid, return the Path object
+                    return path_obj 
+                except Exception as e:
+                    # Handle potential errors during Path() conversion itself
+                    msg = f"Error converting path setting '{key}': {e}"
+                    try:
+                        Logger.instance().warning(self.__class__.__name__, msg)
+                    except Exception:
+                        print(f"[SettingsManager WARNING] {msg}")
+                    return None # Indicate invalid path
+            # --- End Path Validation --- #
+
+            # --- Other Type Conversions --- #
+            converter: Optional[callable] = None
             if isinstance(setting_type, SettingType):
-                converter = self._type_converters[setting_type]
-            else:
+                # Handle other complex types needing deserialization first
+                if isinstance(value, str) and setting_type in [SettingType.LIST, SettingType.DICT, SettingType.DATETIME]:
+                    try:
+                        value = self._deserialize_value(value, setting_type)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        msg = f"Error deserializing setting '{key}' for type {setting_type}: {e}"
+                        try:
+                            Logger.instance().warning(self.__class__.__name__, msg)
+                        except Exception:
+                            print(f"[SettingsManager WARNING] {msg}")
+                        return default # Return default on deserialization error
+                # Get the final converter
+                converter = self._type_converters.get(setting_type)
+            elif callable(setting_type):
                 converter = setting_type
                 
-            try:
-                if isinstance(value, str) and setting_type in [SettingType.LIST, SettingType.DICT, 
-                                                             SettingType.DATETIME, SettingType.PATH]:
-                    value = self._deserialize_value(value, setting_type)
-                else:
-                    value = converter(value)
-            except (ValueError, TypeError) as e:
+            if converter:
+                try:
+                    return converter(value)
+                except (ValueError, TypeError) as e:
+                    msg = f"Error converting setting '{key}' to type {setting_type}: {e}"
+                    try:
+                        Logger.instance().warning(self.__class__.__name__, msg)
+                    except Exception:
+                        print(f"[SettingsManager WARNING] {msg}")
+                    return default # Return default on final conversion error
+            else:
+                # Should not happen if setting_type is valid
+                msg = f"Invalid setting_type provided for key '{key}': {setting_type}"
+                try:
+                    Logger.instance().error(self.__class__.__name__, msg)
+                except Exception:
+                    print(f"[SettingsManager ERROR] {msg}")
                 return default
+            # --- End Other Type Conversions --- #
                 
+        # If no setting_type specified, return raw value from QSettings
         return value
         
     # Add a public 'get' method that calls the internal one

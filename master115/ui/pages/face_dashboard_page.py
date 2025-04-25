@@ -20,6 +20,8 @@ from qt_base_app.components.base_card import BaseCard # Import BaseCard
 from qt_base_app.theme import ThemeManager # Import ThemeManager
 from ..components.icon_button import IconButton # Import IconButton
 from ...models.faceswap_manager import FaceSwapManager # Import the manager
+# Import settings manager to load/save toggle states
+from qt_base_app.models import SettingsManager, SettingType
 
 # PeopleManager is used by PeopleGrid, not directly here anymore
 # from ...models.people_manager import PeopleManager
@@ -42,6 +44,21 @@ class FaceDashboardPage(QWidget):
         self.caller = "FaceDashboardPage"
         self.theme = ThemeManager.instance() # Keep theme for styling
         self.swap_manager = FaceSwapManager(parent=self) # Instantiate the manager WITH parent
+        self.settings = SettingsManager.instance() # Get settings instance
+
+        # --- State for toggles --- # 
+        # Load initial state from settings
+        self._run_headless = self.settings.get(
+            SettingsManager.AI_FACE_SWAP_RUN_HEADLESS_KEY,
+            True, # Default if not found
+            SettingType.BOOL
+        )
+        self._move_source_file = self.settings.get(
+            SettingsManager.AI_FACE_SWAP_MOVE_SOURCE_KEY,
+            True, # Default if not found
+            SettingType.BOOL
+        )
+        # ------------------------ #
 
         self._setup_ui()
         # Initial load when the widget is created
@@ -78,10 +95,29 @@ class FaceDashboardPage(QWidget):
             icon_color_key=('text', 'primary'), # Specify light icon color
             parent=self
         )
+        # --- Headless Toggle Button --- #
+        self.headless_toggle_button = IconButton(
+            # Icon set in _update_headless_button_visuals
+            icon_name='fa5s.eye', # Provide a default icon name
+            tooltip="Toggle Browser Visibility", # Tooltip set in _update_headless_button_visuals
+            icon_color_key=('text', 'primary'),
+            parent=self
+        )
+        # --- Add Move Source Toggle Button --- #
+        self.move_source_toggle_button = IconButton(
+            # Icon set in _update_move_source_button_visuals
+            icon_name='fa5s.archive', # Use 'archive' icon
+            tooltip="Toggle Moving Source Files to Completed", # Tooltip set in _update_move_source_button_visuals
+            icon_color_key=('text', 'primary'),
+            parent=self
+        )
+        # ---------------------------------- #
         
         # Add buttons to the horizontal layout
         self.controls_layout.addWidget(self.start_stop_button)
         self.controls_layout.addWidget(self.kill_button)
+        self.controls_layout.addWidget(self.headless_toggle_button) # Add the headless button
+        self.controls_layout.addWidget(self.move_source_toggle_button) # Add the new move button
         self.controls_layout.addStretch() # Push buttons to the left
         
         # Add the controls layout to the main vertical layout
@@ -116,6 +152,8 @@ class FaceDashboardPage(QWidget):
         # --- Connect Signals --- #
         self.start_stop_button.clicked.connect(self._on_start_stop_clicked)
         self.kill_button.clicked.connect(self._on_kill_clicked)
+        self.headless_toggle_button.clicked.connect(self._toggle_headless_mode) # Connect new button
+        self.move_source_toggle_button.clicked.connect(self._toggle_move_source_mode) # Connect the new button
 
         # Connect signals from the FaceSwapManager to UI update slots
         self.swap_manager.log_message.connect(self._log_message)
@@ -125,6 +163,8 @@ class FaceDashboardPage(QWidget):
 
         # Set initial button states
         self.kill_button.setEnabled(False)
+        self._update_headless_button_visuals() # Set initial icon/tooltip for headless toggle
+        self._update_move_source_button_visuals() # Set initial icon/tooltip for move toggle
 
     def showEvent(self, event):
         """Override showEvent to potentially refresh persons when page becomes visible."""
@@ -153,7 +193,12 @@ class FaceDashboardPage(QWidget):
             if not selected_names:
                  self._log_message("Error: No persons selected. Please select persons from the grid.")
                  return
-            self.swap_manager.start_process(selected_names)
+            # Pass both toggle states to the manager
+            self.swap_manager.start_process(
+                selected_person_names=selected_names,
+                run_headless=self._run_headless,
+                move_source_file=self._move_source_file
+            )
             # UI update (button icon, disabling grid) handled by process_started signal
 
     def _on_kill_clicked(self):
@@ -164,6 +209,46 @@ class FaceDashboardPage(QWidget):
         else:
             self._log_message("Kill clicked, but process is not running.")
         # UI update will be handled by the process_killed signal connection
+
+    def _toggle_headless_mode(self):
+        """Toggles the headless mode state and updates the button visuals."""
+        self._run_headless = not self._run_headless
+        # Persist the setting
+        self.settings.set(SettingsManager.AI_FACE_SWAP_RUN_HEADLESS_KEY, self._run_headless, SettingType.BOOL)
+        self.logger.info(self.caller, f"Headless mode toggled to: {self._run_headless}")
+        self._update_headless_button_visuals()
+
+    def _toggle_move_source_mode(self):
+        """Toggles the move source file state and updates the button visuals."""
+        self._move_source_file = not self._move_source_file
+        # Persist the setting
+        self.settings.set(SettingsManager.AI_FACE_SWAP_MOVE_SOURCE_KEY, self._move_source_file, SettingType.BOOL)
+        self.logger.info(self.caller, f"Move source file mode toggled to: {self._move_source_file}")
+        self._update_move_source_button_visuals()
+
+    def _update_headless_button_visuals(self):
+        """Updates the icon and tooltip of the headless toggle button."""
+        icon_color = self.theme.get_color('text', 'primary')
+        if self._run_headless:
+            icon = qta.icon('fa5s.eye-slash', color=icon_color) # type: ignore
+            tooltip = "Toggle Browser Visibility (Currently Hidden/Headless)"
+        else:
+            icon = qta.icon('fa5s.eye', color=icon_color) # type: ignore
+            tooltip = "Toggle Browser Visibility (Currently Visible)"
+        self.headless_toggle_button.setIcon(icon)
+        self.headless_toggle_button.setToolTip(tooltip)
+
+    def _update_move_source_button_visuals(self):
+        """Updates the icon and tooltip of the move source toggle button."""
+        icon_color = self.theme.get_color('text', 'primary')
+        if self._move_source_file:
+            icon = qta.icon('fa5s.archive', color=icon_color) # Use 'archive' icon
+            tooltip = "Toggle Source File Archiving (Currently Moving to Completed)"
+        else:
+            icon = qta.icon('fa5s.ban', color=icon_color) # Placeholder icon for "Move Disabled"
+            tooltip = "Toggle Source File Archiving (Currently NOT Moving to Completed)"
+        self.move_source_toggle_button.setIcon(icon)
+        self.move_source_toggle_button.setToolTip(tooltip)
 
     # --- Manager Signal Slots --- #
 
@@ -186,7 +271,9 @@ class FaceDashboardPage(QWidget):
         self.start_stop_button.setToolTip("Request Automation Process Stop")
         self.start_stop_button.setEnabled(True) # Re-enable if it was disabled during stop request
         self.kill_button.setEnabled(True)
+        self.headless_toggle_button.setEnabled(False) # Disable toggle during run
         self.people_grid.set_enabled(False) # Disable person selection grid
+        self.move_source_toggle_button.setEnabled(False) # Disable toggle during run
 
     @pyqtSlot()
     def _update_ui_for_stop(self): # Renamed from _reset_ui_after_stop
@@ -198,4 +285,6 @@ class FaceDashboardPage(QWidget):
         self.start_stop_button.setToolTip("Start Automation Process")
         self.start_stop_button.setEnabled(True)
         self.kill_button.setEnabled(False) # Disable kill button
+        self.headless_toggle_button.setEnabled(True) # Re-enable toggle after run
         self.people_grid.set_enabled(True) # Re-enable person selection grid
+        self.move_source_toggle_button.setEnabled(True) # Re-enable toggle after run

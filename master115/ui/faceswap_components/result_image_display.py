@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSizePolicy
 from PyQt6.QtCore import Qt, QSize, QRectF
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QResizeEvent
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QResizeEvent, QMouseEvent
 
 from qt_base_app.models import Logger
 from qt_base_app.theme import ThemeManager
@@ -149,9 +149,18 @@ class ResultImageDisplay(QWidget):
             # Return a default minimum size if no image is loaded
             return QSize(100, 150)
 
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle mouse clicks to toggle approval status."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.logger.debug(self.caller, f"Mouse click detected on image: {self.image_path.name}")
+            self.toggle_approval()
+        else:
+            super().mousePressEvent(event) # Pass other button clicks to base class
+
     def toggle_approval(self):
         """Toggles the approval state and triggers a repaint."""
         self.is_approved = not self.is_approved
+        self.logger.debug(self.caller, f"Approval state for {self.image_path.name} toggled to: {self.is_approved}")
         self.update() # Redraw to show/hide checkmark
 
     def get_approval_state(self) -> bool:

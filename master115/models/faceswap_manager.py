@@ -7,12 +7,13 @@ from typing import List, Dict, Optional, Set
 from PyQt6.QtCore import QObject, pyqtSignal, QThread, pyqtSlot
 
 from .face_swap_models import PersonData, FaceData, SourceImageData, SwapTaskData
-from .face_swap_worker import FaceSwapWorker
+from .face_state_worker import FaceStateWorker
 from .people_manager import PeopleManager
 from .review_manager import ReviewManager
 from qt_base_app.models import Logger, SettingsManager, SettingType
 
 VALID_IMAGE_EXTENSIONS = ["*.jpg", "*.png", "*.jpeg", "*.gif"]
+MAX_CONCURRENT_WORKERS = 6 # Limit simultaneous browser instances
 
 class FaceSwapManager(QObject):
     """
@@ -38,16 +39,32 @@ class FaceSwapManager(QObject):
         self.people_manager = PeopleManager.instance()
 
         self._is_running = False
-        self._workers: List[FaceSwapWorker] = []
+        self._workers: List[FaceStateWorker] = []
         self._worker_threads: List[QThread] = []
         self._active_worker_count = 0
         self._stop_event: Optional[threading.Event] = None
+        # --- Add lists for pending workers --- #
+        self._pending_workers: List[FaceStateWorker] = []
+        self._pending_threads: List[QThread] = []
+        # ----------------------------------- #
         
-        # --- Completion Tracking --- #
-        self._progress_lock = threading.Lock() # Lock for accessing progress tracker
-        # Structure: {source_path: {'total_faces': int, 'completed_faces': set(), 'result_paths': set()}}
-        self._source_image_progress: Dict[Path, Dict[str, Set[str] | int]] = {} 
-        # -------------------------- #
+        # --- NEW Progress Tracking Structures --- #
+        self._progress_lock = threading.Lock()
+        # Tracks completion per (source, person) pair
+        # {source_path: {person_name: {'total_faces': int, 'completed_faces': set(), 'result_paths': set()}}}
+        self._person_source_progress: Dict[Path, Dict[str, Dict[str, Set[str] | int]]] = {}
+        # Tracks which persons have completed ALL their faces for a given source
+        # {source_path: set_of_completed_person_names}
+        self._source_overall_completion: Dict[Path, Set[str]] = {}
+        # Store the set of initially selected persons for this run (needed for overall check)
+        self._current_run_selected_persons: Set[str] = set()
+        # ---------------------------------------- #
+
+        # --- Store current run's headless setting --- #
+        self._current_run_headless: bool = True # Default if not set by start_process
+        # --- Store current run's move source setting --- #
+        self._current_run_move_source: bool = True # Default if not set by start_process
+        # ---------------------------------------- #
 
     def is_running(self) -> bool:
         """Returns True if the automation process is currently active."""
@@ -55,22 +72,33 @@ class FaceSwapManager(QObject):
 
     # --- Public Methods --- #
 
-    def start_process(self, selected_person_names: List[str]):
+    def start_process(self, selected_person_names: List[str], run_headless: bool = True, move_source_file: bool = True):
         """Starts the face swap automation process."""
         # --- Logic moved from FaceDashboardPage._handle_start_request --- #
-        self.logger.info(self.caller, f"Start process requested for: {selected_person_names}")
+        self.logger.info(self.caller, f"Start process requested for: {selected_person_names}, Headless: {run_headless}, Move Source: {move_source_file}")
+        # Store the settings for this run
+        self._current_run_headless = run_headless
+        self._current_run_move_source = move_source_file
+        
         if self._is_running:
             self.logger.warn(self.caller, "Start requested but process is already running.")
             self.log_message.emit("Warning: Automation process is already running.")
             return
 
         # 1. Validate AI Root Dir
-        ai_root_path = self.people_manager._get_ai_root()
+        # Get AI Root Dir directly from SettingsManager (it will be validated)
+        ai_root_path = self.settings.get(
+            SettingsManager.AI_ROOT_DIR_KEY, 
+            None, # Default to None if setting missing or invalid
+            SettingType.PATH
+        )
+        # Check if the returned path is valid (SettingsManager returns None if invalid)
         if not ai_root_path:
-            self.log_message.emit("Error: AI Root Directory is not set or invalid. Please check Preferences.")
-            self.logger.error(self.caller, "AI Root Directory invalid or not set.")
+            self.log_message.emit("Error: AI Root Directory is not set or is invalid. Please check Preferences.")
+            # Logger messages are already handled by SettingsManager if invalid
+            self.logger.error(self.caller, "AI Root Directory not set or invalid.")
             return
-            
+
         # 2. Get All Source Images
         all_source_images = self._get_all_source_images(ai_root_path) # Use internal method
         if not all_source_images:
@@ -124,65 +152,73 @@ class FaceSwapManager(QObject):
         self._worker_threads.clear()
         self._active_worker_count = 0
         self._stop_event = threading.Event()
-        
-        # --- Initialize progress tracking --- #
-        with self._progress_lock:
-            self._source_image_progress.clear()
-            for src_img in all_source_images:
-                self._source_image_progress[src_img.path] = {
-                    'total_faces': total_faces_to_process,
-                    'completed_faces': set(), # Store completed face filenames
-                    'result_paths': set()     # Store paths to generated temp files
-                }
+        # --- Clear pending lists as well --- #
+        self._pending_workers.clear()
+        self._pending_threads.clear()
         # --------------------------------- #
+        
+        # --- Initialize NEW progress tracking --- #
+        with self._progress_lock:
+            self._person_source_progress.clear()
+            self._source_overall_completion.clear()
+            # Store the names of persons we are actually processing
+            self._current_run_selected_persons = {p.name for p in valid_selected_persons}
+
+            for src_img in all_source_images:
+                source_path = src_img.path
+                self._person_source_progress[source_path] = {}
+                self._source_overall_completion[source_path] = set() # Initialize empty set for overall completion
+
+                for person in valid_selected_persons:
+                    person_faces_count = len(person.faces)
+                    if person_faces_count > 0: # Only track persons with faces for this source
+                        self._person_source_progress[source_path][person.name] = {
+                            'total_faces': person_faces_count,
+                            'completed_faces': set(), # Store completed face filenames for this person/source
+                            'result_paths': set()     # Store paths generated for this person/source
+                        }
+        # ------------------------------------- #
 
         self.logger.info(self.caller, f"Preparing to start workers. Persons: {len(valid_selected_persons)}, Sources: {len(all_source_images)}")
         total_workers_to_start = sum(len(person.faces) for person in valid_selected_persons)
         self.log_message.emit(f"Starting automation... Found {len(all_source_images)} source images.")
         self.log_message.emit(f"Processing faces for {len(valid_selected_persons)} selected persons ({total_faces_to_process} unique faces). Total workers: {total_workers_to_start}")
+        self.log_message.emit(f"Concurrency limit set to {MAX_CONCURRENT_WORKERS} workers.")
 
-        # 5. Create and Start Workers
+        # 5. Create Workers and Threads (but don't start all yet)
         for person in valid_selected_persons:
             for face in person.faces:
-                worker = FaceSwapWorker(
+                # Create worker - DO NOT MOVE TO THREAD YET
+                worker = FaceStateWorker(
                     person=person,
                     face=face,
                     source_images=all_source_images,
                     temp_output_dir=temp_output_dir,
-                    stop_event=self._stop_event
+                    stop_event=self._stop_event,
+                    run_headless=self._current_run_headless # Pass headless value
                 )
-                thread = QThread()
-                worker.moveToThread(thread)
+                thread = QThread() # Create thread
 
-                # Connect signals to internal slots
-                worker.log_message.connect(self.log_message) # Forward log messages directly
-                worker.task_complete.connect(self._on_task_complete)
-                worker.task_failed.connect(self._on_task_failed)
-                worker.finished.connect(self._on_worker_finished) # Connect worker finished
-                thread.started.connect(worker.run)
+                # Add to pending lists
+                self._pending_workers.append(worker)
+                self._pending_threads.append(thread)
 
-                # Setup cleanup connections
-                worker.finished.connect(thread.quit)
-                # Delete worker when thread finishes cleanly
-                thread.finished.connect(worker.deleteLater) # <-- Important for cleanup
+        # 6. Start the initial batch of workers
+        self._is_running = True
+        self._start_pending_workers() # Call helper to start up to the limit
 
-                self._workers.append(worker)
-                self._worker_threads.append(thread)
-
-                thread.start()
-                self._active_worker_count += 1
-                self.logger.debug(self.caller, f"Started worker thread for {person.name} - {face.filename}")
-
+        # Check if any workers actually started
         if self._active_worker_count > 0:
-            self._is_running = True
             self.process_started.emit() # Signal UI that process has started
-            self.logger.info(self.caller, f"Successfully started {self._active_worker_count} worker threads.")
-            self.log_message.emit(f"Automation process running with {self._active_worker_count} workers.")
+            self.logger.info(self.caller, f"Successfully started initial {self._active_worker_count} worker threads.")
+            self.log_message.emit(f"Automation process running with {self._active_worker_count} active workers (limit {MAX_CONCURRENT_WORKERS}).")
         else:
-            self.log_message.emit("Warning: No worker threads were started. Check configuration or face images.")
-            self.logger.warning(self.caller, "No worker threads were started.")
-            # No UI state to reset here, UI will handle based on signals
-        # --- End of moved logic ---
+            # This case might happen if _start_pending_workers fails immediately, though unlikely
+            self.log_message.emit("Error: Failed to start any initial worker threads.")
+            self.logger.error(self.caller, "Failed to start initial workers.")
+            self._cleanup_after_stop()
+            self._is_running = False # Ensure state is correct
+        # --- End of modified start logic ---
 
     def stop_process(self):
         """Requests a graceful stop of the automation process."""
@@ -289,23 +325,62 @@ class FaceSwapManager(QObject):
             
             # --- Update Progress & Check for Source Completion --- #
             with self._progress_lock:
-                if source_path in self._source_image_progress:
-                    progress_data = self._source_image_progress[source_path]
-                    progress_data['completed_faces'].add(face_filename)
-                    progress_data['result_paths'].add(output_path) # Add path to generated result
+                # Check if source and person are tracked
+                if source_path in self._person_source_progress and person_name in self._person_source_progress[source_path]:
+                    person_progress = self._person_source_progress[source_path][person_name]
+                    person_progress['completed_faces'].add(face_filename)
+                    person_progress['result_paths'].add(output_path)
 
-                    total_expected = progress_data['total_faces']
-                    currently_completed = len(progress_data['completed_faces'])
+                    total_person_faces = person_progress['total_faces']
+                    completed_person_faces = len(person_progress['completed_faces'])
 
-                    self.logger.debug(self.caller, f"Progress for {source_path.name}: {currently_completed}/{total_expected} faces done.")
+                    self.logger.debug(self.caller, f"Progress for {person_name} on {source_path.name}: {completed_person_faces}/{total_person_faces} faces done.")
 
-                    if currently_completed >= total_expected:
-                        self.logger.info(self.caller, f"All {total_expected} faces completed for source: {source_path.name}. Handling completion...")
-                        # Call completion handler *within the lock*
-                        self._handle_source_completion(source_path, progress_data) 
+                    # --- Check 1: Person completed for this source ---
+                    if completed_person_faces >= total_person_faces:
+                        self.logger.info(self.caller, f"All {total_person_faces} faces for {person_name} completed on source: {source_path.name}. Adding to review.")
+                        # Add this person/source pair to review (will NOT move file)
+                        ReviewManager.instance().add_person_source_review(
+                            person_name=person_name,
+                            original_source_path=source_path,
+                            result_paths=person_progress['result_paths'] # Pass only this person's results
+                        )
+
+                        # Update overall source completion tracker
+                        if source_path in self._source_overall_completion:
+                            self._source_overall_completion[source_path].add(person_name)
+                        else:
+                            # Should not happen if initialized correctly, but handle defensively
+                             self.logger.warn(self.caller, f"Source path {source_path.name} not found in overall completion tracker while updating for {person_name}.")
+                             self._source_overall_completion[source_path] = {person_name}
+
+                        # --- Check 2: Source completed for ALL selected persons ---
+                        completed_persons_for_source = self._source_overall_completion[source_path]
+                        if completed_persons_for_source == self._current_run_selected_persons:
+                            log_msg_suffix = "Moving source file." if self._current_run_move_source else "Skipping source file move (toggle disabled)."
+                            self.logger.info(self.caller, f"Source {source_path.name} is now complete for ALL selected persons ({len(self._current_run_selected_persons)}). {log_msg_suffix}")
+                            
+                            # Conditionally move the source file based on the setting for this run
+                            if self._current_run_move_source:
+                                ReviewManager.instance().mark_source_completed_and_move(
+                                    original_source_path=source_path
+                                )
+                            else:
+                                # Still mark as complete in ReviewManager's JSON, but don't move file
+                                ReviewManager.instance().mark_source_completed_in_json(
+                                    original_source_path=source_path
+                                )
+                            # --- Remove completed source from tracking immediately --- #
+                            if source_path in self._person_source_progress:
+                                del self._person_source_progress[source_path]
+                                self.logger.debug(self.caller, f"Removed {source_path.name} from active person progress tracker.")
+                            if source_path in self._source_overall_completion:
+                                del self._source_overall_completion[source_path]
+                                self.logger.debug(self.caller, f"Removed {source_path.name} from overall completion tracker.")
+                            # --------------------------------------------------------- #
+
                 else:
-                    # This shouldn't happen if initialization is correct
-                     self.logger.warn(self.caller, f"Received task_complete for untracked source: {source_path.name}")
+                    self.logger.warn(self.caller, f"Received task_complete for untracked source/person: {source_path.name} / {person_name}")
 
             # --- End of Progress Update --- #
 
@@ -335,8 +410,8 @@ class FaceSwapManager(QObject):
             # --------------------------------------- #
 
             # Remove from in-memory tracker *only after successful move and JSON update*
-            if source_path in self._source_image_progress:
-                del self._source_image_progress[source_path]
+            if source_path in self._person_source_progress:
+                del self._person_source_progress[source_path]
                 self.logger.debug(self.caller, f"Removed {source_path.name} from active progress tracking.")
 
         except Exception as e:
@@ -378,49 +453,60 @@ class FaceSwapManager(QObject):
         self._active_worker_count -= 1
         self.logger.debug(self.caller, f"Worker finished. Remaining active: {self._active_worker_count}")
 
-        if self._active_worker_count <= 0:
-            self.logger.info(self.caller, "All worker objects finished; shutting down threads.")
+        # --- Attempt to start next worker --- #
+        if self._is_running and not (self._stop_event and self._stop_event.is_set()):
+             self._start_pending_workers()
+        # ---------------------------------- #
 
-            # ---- FIX: Implement correct Quit -> Wait -> DeleteLater sequence ----
-            # 1) Tell every thread to quit its event-loop
-            self.logger.debug(self.caller, "Requesting all threads to quit...")
-            for thread in self._worker_threads:
-                if thread.isRunning():
-                    thread.quit()             # Ask the event loop to exit
-
-            # 2) Wait until *all* have actually terminated
-            self.logger.debug(self.caller, "Waiting for all threads to terminate...")
-            all_terminated = True # Flag to track if all waited successfully
-            for thread in self._worker_threads:
-                if thread.isRunning():
-                    if not thread.wait(5000): # Wait up to 5 seconds
-                        self.logger.warn(self.caller, f"Thread {thread} did not finish within the timeout after quit signal.")
-                        all_terminated = False
-                    else: # Debug log if needed
-                         self.logger.debug(self.caller, f"Thread {thread} finished cleanly after wait.")
-                # Schedule for deletion regardless of clean termination within wait
-                thread.deleteLater()
-            # -------------------------------------------------------------------- #
-
-            if all_terminated:
-                self.logger.info(self.caller, "All QThreads have terminated cleanly.")
-            else:
-                 self.logger.warn(self.caller, "Some QThreads did not terminate cleanly within the timeout.")
-
-
-            # Log final status and cleanup state *after* threads are done
-            final_message = "Process stopped gracefully." if self._stop_event and self._stop_event.is_set() else "All tasks completed."
-            # Check if any tasks are still pending (shouldn't be if count is 0, but safety check)
+        if self._active_worker_count <= 0 and self._is_running:
+            # Check if all pending workers have been processed
+            # Use the lock here just to be safe when checking pending list
             with self._progress_lock:
-                remaining_tasks = len(self._source_image_progress)
-            if remaining_tasks > 0 and not (self._stop_event and self._stop_event.is_set()):
-                 final_message += f" (Warning: {remaining_tasks} source images did not fully complete)."
-                 self.logger.warn(self.caller, f"Process finished, but {remaining_tasks} source images remain in progress tracker.")
+                 all_pending_started = not self._pending_workers
+                 
+            if all_pending_started:
+                self.logger.info(self.caller, "All worker objects finished; shutting down threads.")
 
-            self.log_message.emit(final_message)
-            
-            self._cleanup_after_stop()
-            self.process_finished.emit()
+                # ---- FIX: Implement correct Quit -> Wait -> DeleteLater sequence ----
+                # 1) Tell every thread to quit its event-loop
+                self.logger.debug(self.caller, "Requesting all threads to quit...")
+                for thread in self._worker_threads:
+                    if thread.isRunning():
+                        thread.quit()             # Ask the event loop to exit
+
+                # 2) Wait until *all* have actually terminated
+                self.logger.debug(self.caller, "Waiting for all threads to terminate...")
+                all_terminated = True # Flag to track if all waited successfully
+                for thread in self._worker_threads:
+                    if thread.isRunning():
+                        if not thread.wait(5000): # Wait up to 5 seconds
+                            self.logger.warn(self.caller, f"Thread {thread} did not finish within the timeout after quit signal.")
+                            all_terminated = False
+                        else: # Debug log if needed
+                             self.logger.debug(self.caller, f"Thread {thread} finished cleanly after wait.")
+                    # Schedule for deletion regardless of clean termination within wait
+                    thread.deleteLater()
+                # -------------------------------------------------------------------- #
+
+                if all_terminated:
+                    self.logger.info(self.caller, "All QThreads have terminated cleanly.")
+                else:
+                     self.logger.warn(self.caller, "Some QThreads did not terminate cleanly within the timeout.")
+
+
+                # Log final status and cleanup state *after* threads are done
+                final_message = "Process stopped gracefully." if self._stop_event and self._stop_event.is_set() else "All tasks completed."
+                # Check if any tasks are still pending (shouldn't be if count is 0, but safety check)
+                with self._progress_lock:
+                    remaining_tasks = len(self._person_source_progress)
+                if remaining_tasks > 0 and not (self._stop_event and self._stop_event.is_set()):
+                     final_message += f" (Warning: {remaining_tasks} source images did not fully complete)."
+                     self.logger.warn(self.caller, f"Process finished, but {remaining_tasks} source images remain in progress tracker.")
+
+                self.log_message.emit(final_message)
+                
+                self._cleanup_after_stop()
+                self.process_finished.emit()
 
         # If workers > 0, just return (no cleanup yet)
 
@@ -433,7 +519,9 @@ class FaceSwapManager(QObject):
         self._stop_event = None
         # --- Clear progress tracker on cleanup --- #
         with self._progress_lock:
-            self._source_image_progress.clear()
+            self._person_source_progress.clear()
+            self._source_overall_completion.clear()
+            self._current_run_selected_persons.clear()
         # ---------------------------------------- #
         self.logger.info(self.caller, "Manager internal state reset.") 
 
@@ -446,3 +534,35 @@ class FaceSwapManager(QObject):
         # This method should be implemented to read, update, and write the PendingReview.json file
         # based on the original_path, completed_path, and result_paths
         pass 
+
+    # --- New Helper Method --- #
+    def _start_pending_workers(self):
+        """Starts pending workers up to the concurrency limit."""
+        if not self._is_running: # Don't start if process was stopped
+             return
+             
+        with self._progress_lock: # Use existing lock for modifying worker lists/counts
+             while self._active_worker_count < MAX_CONCURRENT_WORKERS and self._pending_workers:
+                worker = self._pending_workers.pop(0)
+                thread = self._pending_threads.pop(0)
+
+                # Move worker to thread NOW
+                worker.moveToThread(thread)
+
+                # Connect signals (same as before)
+                worker.log_message.connect(self.log_message)
+                worker.task_complete.connect(self._on_task_complete)
+                worker.task_failed.connect(self._on_task_failed)
+                worker.finished.connect(self._on_worker_finished)
+                thread.started.connect(worker.run)
+                worker.finished.connect(thread.quit)
+                thread.finished.connect(worker.deleteLater)
+
+                # Add to *active* tracking lists
+                self._workers.append(worker)
+                self._worker_threads.append(thread)
+
+                thread.start()
+                self._active_worker_count += 1
+                self.logger.debug(self.caller, f"Started pending worker: {worker.caller}. Active: {self._active_worker_count}")
+    # ------------------------ # 

@@ -10,6 +10,8 @@ from qt_base_app.models import Logger, SettingsManager, SettingType
 
 # Constants
 PENDING_REVIEW_FILENAME = "PendingReview.json"
+# Define expected keys for the new JSON structure
+JSON_REQUIRED_KEYS = ['person_name', 'original_source_path', 'result_image_paths']
 
 class ReviewManager(QObject):
     """
@@ -21,8 +23,8 @@ class ReviewManager(QObject):
     # Payload is the dictionary representing the added item
     review_item_added = pyqtSignal(dict)
     # Signal emitted when an item is successfully processed and removed
-    # Payload is the original_source_path (string) of the removed item
-    review_item_removed = pyqtSignal(str)
+    # Payload: person_name (str), original_source_path_str (str)
+    review_item_removed = pyqtSignal(str, str)
 
     _instance = None
     _lock = threading.Lock()
@@ -90,9 +92,9 @@ class ReviewManager(QObject):
                         if isinstance(loaded_data, list):
                             # Basic validation of list items (check for required keys)
                             self._pending_reviews = [
-                                item for item in loaded_data 
-                                if isinstance(item, dict) and 
-                                all(k in item for k in ['original_source_path', 'completed_source_path', 'result_image_paths'])
+                                item for item in loaded_data
+                                if isinstance(item, dict) and
+                                all(k in item for k in JSON_REQUIRED_KEYS)
                             ]
                             if len(self._pending_reviews) != len(loaded_data):
                                 self.logger.warn(self.caller, f"Loaded {len(self._pending_reviews)} valid items from {json_path.name}, ignored some invalid entries.")
@@ -141,66 +143,113 @@ class ReviewManager(QObject):
         except Exception as backup_err:
             self.logger.error(self.caller, f"Could not create backup of corrupt JSON: {backup_err}")
 
+    def _find_review_item_index(self, person_name: str, original_source_path_str: str) -> int:
+        """Finds the index of a specific pending review item. Returns -1 if not found."""
+        # Assumes lock is already held by the caller
+        for index, item in enumerate(self._pending_reviews):
+            if item.get('person_name') == person_name and item.get('original_source_path') == original_source_path_str:
+                return index
+        return -1 # Not found
+
     # --- Public API --- #
 
     def add_pending_review(self, original_source_path: Path, result_paths: Set[str]):
         """
+        DEPRECATED: Use add_person_source_review instead.
+
         Moves the completed source file, adds the entry to the pending review list,
         saves the list, and emits a signal.
         """
+        self.logger.warn(self.caller, "DEPRECATED method add_pending_review called. Please update calling code.")
+        # This method is no longer suitable for the per-person review logic.
+        # We might keep it for future use cases or remove it entirely.
+        # For now, just log a warning.
+        pass # Avoid any operations
+
+    def add_person_source_review(self, person_name: str, original_source_path: Path, result_paths: Set[str]):
+        """
+        Adds a (Person, Source) pair to the pending review list, saves the JSON,
+        and emits the review_item_added signal.
+        This method does NOT move the source file.
+        """
         with self._lock:
-            # --- Calculate Paths --- #
-            ai_root_path = self._get_ai_root_path() # Get validated AI Root path
-            if not ai_root_path:
-                self.logger.error(self.caller, f"Cannot add pending review for {original_source_path.name}, AI Root path not found.")
-                return # Cannot proceed
-
-            completed_dir = ai_root_path / "SourceImages" / "Completed"
-            completed_path = completed_dir / original_source_path.name
-            # ---------------------- #
-
-            # Use string paths for consistency and JSON compatibility
             original_path_str = str(original_source_path.resolve())
-            completed_path_str = str(completed_path.resolve()) # Use calculated path
             result_paths_list = sorted([str(Path(p).resolve()) for p in result_paths])
 
-            # --- Move File First --- #
-            try:
-                completed_dir.mkdir(parents=True, exist_ok=True)
-                self.logger.info(self.caller, f"Moving completed source '{original_source_path.name}' to Completed/ folder.")
-                shutil.move(str(original_source_path), str(completed_path))
-                self.logger.info(self.caller, f"Successfully moved {original_source_path.name} to {completed_path}")
-            except OSError as e:
-                err_msg = f"Error moving {original_source_path.name} to Completed/: {e}"
-                self.logger.error(self.caller, err_msg, exc_info=True)
-                # Do not add to JSON or emit signal if move fails
-                return
-            except Exception as e:
-                err_msg = f"Unexpected error moving {original_source_path.name}: {e}"
-                self.logger.error(self.caller, err_msg, exc_info=True)
-                # Do not add to JSON or emit signal if move fails
-                return
-            # ----------------------- #
-
-            # Check for duplicates based on original_source_path
-            if any(item.get('original_source_path') == original_path_str for item in self._pending_reviews):
-                self.logger.warn(self.caller, f"Attempted to add duplicate entry for {original_source_path.name}. Ignoring.")
+            # Use helper to check for duplicates
+            existing_index = self._find_review_item_index(person_name, original_path_str)
+            if existing_index != -1:
+                self.logger.warn(self.caller, f"Attempted to add duplicate review entry for {person_name} / {original_source_path.name}. Ignoring.")
                 return
 
             new_entry = {
+                'person_name': person_name,
                 'original_source_path': original_path_str,
-                'completed_source_path': completed_path_str,
-                'result_image_paths': result_paths_list
+                'result_image_paths': result_paths_list,
+                'completed_source_path': None # Initialize as None, will be set later
             }
-            
+
             self._pending_reviews.append(new_entry)
-            self.logger.info(self.caller, f"Added entry for {original_source_path.name} to pending reviews.")
+            self.logger.info(self.caller, f"Added review entry for {person_name} / {original_source_path.name} to pending reviews.")
             self._save_data()
-            # Emit signal *after* successful move and save
+            # Emit signal *after* successful save
             self.review_item_added.emit(new_entry)
+
+    def mark_source_completed_and_move(self, original_source_path: Path):
+        """
+        Moves the source file to the Completed directory and updates the
+        'completed_source_path' field for all related entries in the JSON.
+        """
+        with self._lock:
+            ai_root_path = self._get_ai_root_path()
+            if not ai_root_path:
+                self.logger.error(self.caller, f"Cannot mark source completed for {original_source_path.name}, AI Root path not found.")
+                return
+
+            completed_dir = ai_root_path / "SourceImages" / "Completed"
+            completed_path = completed_dir / original_source_path.name
+
+            original_path_str = str(original_source_path.resolve())
+            completed_path_str = str(completed_path.resolve())
+
+            # 1. Move the file
+            try:
+                completed_dir.mkdir(parents=True, exist_ok=True)
+                # Check if file still exists before moving (maybe already moved?)
+                if original_source_path.exists():
+                    self.logger.info(self.caller, f"Moving completed source '{original_source_path.name}' to Completed/ folder (Overall completion).")
+                    shutil.move(str(original_source_path), str(completed_path))
+                    self.logger.info(self.caller, f"Successfully moved {original_source_path.name} to {completed_path}")
+                else:
+                    self.logger.warn(self.caller, f"Source file {original_source_path.name} not found for final move, perhaps already moved or deleted?")
+            except OSError as e:
+                err_msg = f"Error moving {original_source_path.name} to Completed/ during finalization: {e}"
+                self.logger.error(self.caller, err_msg, exc_info=True)
+                # Continue to update JSON even if move failed?
+                # For now, we'll still try to update JSON, assuming the move *should* have happened.
+            except Exception as e:
+                err_msg = f"Unexpected error moving {original_source_path.name} during finalization: {e}"
+                self.logger.error(self.caller, err_msg, exc_info=True)
+                # Continue?
+
+            # 2. Update JSON entries
+            updated_count = 0
+            for item in self._pending_reviews:
+                if item.get('original_source_path') == original_path_str:
+                    if item.get('completed_source_path') != completed_path_str:
+                        item['completed_source_path'] = completed_path_str
+                        updated_count += 1
+
+            if updated_count > 0:
+                self.logger.info(self.caller, f"Updated 'completed_source_path' for {updated_count} review entries related to {original_source_path.name}.")
+                self._save_data()
+            else:
+                 self.logger.info(self.caller, f"No pending review entries found or needed update for completed source: {original_source_path.name}")
 
     def remove_pending_review(self, original_source_path_str: str) -> bool:
         """
+        DEPRECATED: Use process_review_decision instead.
+
         Removes a pending review item identified by its original source path string.
 
         Args:
@@ -211,20 +260,23 @@ class ReviewManager(QObject):
         """
         removed = False
         with self._lock:
-            initial_count = len(self._pending_reviews)
-            self._pending_reviews = [
-                item for item in self._pending_reviews 
-                if item.get('original_source_path') != original_source_path_str
-            ]
-            if len(self._pending_reviews) < initial_count:
-                self.logger.info(self.caller, f"Removed entry for {Path(original_source_path_str).name} from pending reviews.")
-                self._save_data()
-                removed = True
-            else:
-                 self.logger.warn(self.caller, f"Attempted to remove non-existent entry for {Path(original_source_path_str).name}.")
+            # This method is ambiguous now, as multiple items might share the same original_source_path.
+            # We need person_name to uniquely identify.
+            self.logger.warn(self.caller, f"DEPRECATED method remove_pending_review called for {original_source_path_str}. No action taken. Use process_review_decision.")
+            # initial_count = len(self._pending_reviews)
+            # self._pending_reviews = [
+            #     item for item in self._pending_reviews
+            #     if item.get('original_source_path') != original_source_path_str
+            # ]
+            # if len(self._pending_reviews) < initial_count:
+            #     self.logger.info(self.caller, f"Removed entry for {Path(original_source_path_str).name} from pending reviews.")
+            #     self._save_data()
+            #     removed = True
+            # else:
+            #      self.logger.warn(self.caller, f"Attempted to remove non-existent entry for {Path(original_source_path_str).name}.")
         return removed
 
-    def process_review_decision(self, original_source_path_str: str, approved_paths: List[str], unapproved_paths: List[str]):
+    def process_review_decision(self, person_name: str, original_source_path_str: str, approved_paths: List[str], unapproved_paths: List[str]):
         """
         Processes the user's review decision for a specific item:
         - Moves approved files from Temp to FaceSwapped.
@@ -284,22 +336,26 @@ class ReviewManager(QObject):
                     file_op_errors += 1
 
             # 4. Remove the item from pending reviews and save JSON
+            # Use helper to find the index
+            item_index_to_remove = self._find_review_item_index(person_name, original_source_path_str)
             item_removed = False
-            initial_count = len(self._pending_reviews)
-            self._pending_reviews = [
-                item for item in self._pending_reviews
-                if item.get('original_source_path') != original_source_path_str
-            ]
-            if len(self._pending_reviews) < initial_count:
-                self.logger.info(self.caller, f"Removed entry for {processed_item_name} from pending reviews list.")
-                self._save_data()
-                item_removed = True
+
+            if item_index_to_remove != -1:
+                try:
+                    removed_item_data = self._pending_reviews.pop(item_index_to_remove)
+                    self.logger.info(self.caller, f"Removed entry for {processed_item_name} from pending reviews list.")
+                    self._save_data()
+                    item_removed = True
+                except IndexError:
+                     # Should not happen if index is valid, but handle defensively
+                     self.logger.error(self.caller, f"IndexError removing item at index {item_index_to_remove}. List length: {len(self._pending_reviews)}")
             else:
                  self.logger.warn(self.caller, f"Tried to remove entry for {processed_item_name}, but it was not found in list.")
 
             # 5. Emit signal if item was successfully removed from list
             if item_removed:
-                self.review_item_removed.emit(original_source_path_str)
+                # Emit with person_name as well
+                self.review_item_removed.emit(person_name, original_source_path_str)
                 if file_op_errors > 0:
                      self.logger.warn(self.caller, f"Review processing complete for {processed_item_name} with {file_op_errors} file errors. Item removed from queue.")
                 else:
@@ -317,6 +373,24 @@ class ReviewManager(QObject):
             # import copy
             # return copy.deepcopy(self._pending_reviews) 
             return list(self._pending_reviews) # Return a shallow copy
+
+    def get_review_details(self, person_name: str, original_source_path_str: str) -> Optional[Dict[str, Any]]:
+        """Finds and returns the full dictionary for a specific pending review item."""
+        with self._lock:
+            # Use helper to find index
+            item_index = self._find_review_item_index(person_name, original_source_path_str)
+            if item_index != -1:
+                try:
+                    # Return a copy to prevent external modification
+                    return dict(self._pending_reviews[item_index])
+                except IndexError:
+                    # Should not happen if index is valid
+                    self.logger.error(self.caller, f"IndexError getting details at index {item_index}. List length: {len(self._pending_reviews)}")
+                    return None
+            else:
+                # Item not found
+                self.logger.warn(self.caller, f"Could not find review details for {person_name}/{Path(original_source_path_str).name}")
+                return None
 
     def clear_all_pending_reviews(self):
         """Removes all items from the pending review list and saves."""

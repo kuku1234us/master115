@@ -6,12 +6,13 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QHBoxLayout,
     QApplication, QDialogButtonBox, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QSize, QByteArray
 from PyQt6.QtGui import QKeyEvent, QResizeEvent
 
 # Local Imports
 from .result_image_display import ResultImageDisplay # Will be created next
 from qt_base_app.models import Logger
+from qt_base_app.models import SettingsManager # Import SettingsManager
 
 class ReviewPopupDialog(QDialog):
     """
@@ -21,42 +22,64 @@ class ReviewPopupDialog(QDialog):
 
     # --- Signals --- #
     # Signal requesting navigation to the next item in the main list
-    navigate_next = pyqtSignal()
+    request_next_item = pyqtSignal()
     # Signal requesting navigation to the previous item in the main list
-    navigate_previous = pyqtSignal()
+    request_previous_item = pyqtSignal()
     # Signal indicating review is complete for the current item, 
     # providing the original source path to identify it for removal.
-    review_complete = pyqtSignal(str)
+    # DEPRECATED review_complete = pyqtSignal(str)
     # Signal with review decision data: original_source_path, approved_paths, unapproved_paths
-    review_processed = pyqtSignal(str, list, list)
+    review_processed = pyqtSignal(str, str, list, list)
 
-    def __init__(self, review_item: Dict[str, Any], parent=None):
+    # --- Add settings key --- #
+    GEOMETRY_SETTING_KEY = "ui/review_popup/geometry"
+
+    # Update constructor signature
+    def __init__(self, 
+                 person_name: str,
+                 original_source_path: str,
+                 result_image_paths: List[str],
+                 ai_root_dir_str: str, # Added AI root for potential future use
+                 parent=None):
         """
         Initialize the dialog.
 
         Args:
-            review_item (Dict[str, Any]): Dictionary containing review data from ReviewManager.
-                                           Expected keys: 'original_source_path', 'completed_source_path', 'result_image_paths'.
+            person_name (str): Name of the person reviewed.
+            original_source_path (str): Path to the original source image.
+            result_image_paths (List[str]): List of paths to the generated result images.
+            ai_root_dir_str (str): The configured AI Root directory path.
             parent (QWidget, optional): Parent widget. Defaults to None.
         """
         super().__init__(parent)
         self.logger = Logger.instance()
         self.caller = "ReviewPopupDialog"
+        self.settings = SettingsManager.instance() # Get settings instance
 
-        # Store initial data
-        self.current_review_item = review_item
-        self.original_source_path: Optional[str] = None
-        self.result_paths: List[str] = []
-        self.person_name: str = "Unknown Person"
+        # Store initial data directly from arguments
+        self.person_name = person_name
+        self.original_source_path = original_source_path
+        self.result_paths = result_image_paths or []
+        self.ai_root_dir = Path(ai_root_dir_str) # Store as Path object
         self.source_filename: str = "Unknown Source"
         self.result_displays: List[ResultImageDisplay] = []
 
         self.setWindowTitle("Face Swap Review") # Generic initial title
-        self.setModal(True) # Make it modal
+        self.setModal(False) # Make it non-modal now, managed by FaceReviewPage
         self.setMinimumSize(800, 600) # Start with a reasonable minimum size
 
         self._setup_ui()
-        self.load_review_item(self.current_review_item) # Load initial data
+        self._update_display_data() # Use helper method to load data
+
+        # --- Restore Geometry --- #
+        saved_geometry = self.settings.get(self.GEOMETRY_SETTING_KEY)
+        if isinstance(saved_geometry, QByteArray) and not saved_geometry.isEmpty():
+            self.logger.debug(self.caller, "Restoring saved dialog geometry.")
+            if not self.restoreGeometry(saved_geometry):
+                self.logger.warn(self.caller, "Failed to restore saved geometry.")
+        else:
+             self.logger.debug(self.caller, "No saved geometry found, using default.")
+        # ------------------------ #
 
     def _setup_ui(self):
         """Set up the main layout and widgets for the dialog."""
@@ -64,7 +87,18 @@ class ReviewPopupDialog(QDialog):
         self.main_layout.setContentsMargins(10, 10, 10, 10)
         self.main_layout.setSpacing(10)
 
-        # --- Scroll Area for Images ---
+        # --- Title Label --- #
+        self.title_label = QLabel()
+        self.title_label.setObjectName("DialogTitleLabel")
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = self.title_label.font()
+        font.setPointSize(12)
+        font.setBold(True)
+        self.title_label.setFont(font)
+        self.main_layout.addWidget(self.title_label)
+        # ------------------- #
+
+        # --- Scroll Area for Images --- #
         self.scroll_area = QScrollArea()
         # Ensure scroll area expands vertically
         self.scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -87,38 +121,22 @@ class ReviewPopupDialog(QDialog):
         self.scroll_area.setWidget(self.image_container_widget)
         self.main_layout.addWidget(self.scroll_area, 1) # Give scroll area stretch factor
 
-    def load_review_item(self, review_item: Dict[str, Any]):
-        """Loads the data for a specific review item into the dialog."""
-        self.logger.debug(self.caller, f"Loading review item: {review_item.get('original_source_path')}")
-        self.current_review_item = review_item
-
-        # Extract data (with defaults/error handling)
-        self.original_source_path = self.current_review_item.get('original_source_path')
-        self.result_paths = self.current_review_item.get('result_image_paths', [])
-
-        # Infer display names (same logic as before)
-        self.person_name = "Unknown Person"
-        self.source_filename = "Unknown Source"
-        if self.result_paths:
-             try:
-                 first_result_name = Path(self.result_paths[0]).name
-                 parts = first_result_name.split(' ', 2)
-                 if len(parts) >= 3:
-                     self.person_name = parts[0]
-                     self.source_filename = parts[2].rsplit('.', 1)[0]
-             except Exception as e:
-                 self.logger.warn(self.caller, f"Could not parse names from first result path {self.result_paths[0]}: {e}")
+    def _update_display_data(self):
+        """Updates the dialog's title and populates images based on current data."""
+        self.logger.debug(self.caller, f"Updating display for: {self.original_source_path}")
+        
+        # Update source filename from path
+        if self.original_source_path:
+            try:
+                self.source_filename = Path(self.original_source_path).name
+            except Exception as e:
+                self.logger.warn(f"Could not get filename from source path '{self.original_source_path}': {e}")
+                self.source_filename = "Unknown Source"
         else:
-            self.logger.warn(self.caller, "No result paths found in review item.")
-            if self.original_source_path:
-                 # Fallback to using original source filename if possible
-                 try:
-                     self.source_filename = Path(self.original_source_path).name
-                 except Exception:
-                      pass # Keep default
-
-        # Update Title
-        self.setWindowTitle(f"Review: {self.person_name} / {self.source_filename}")
+            self.source_filename = "Unknown Source"
+            
+        # Update Title Label
+        self.title_label.setText(f"Review: {self.person_name} / {self.source_filename}")
 
         self._populate_images()
 
@@ -167,51 +185,74 @@ class ReviewPopupDialog(QDialog):
 
         # Explicitly activate the layout to force recalculation after adding widgets
         self.image_layout.activate()
+        # Trigger size update after populating
+        self._update_image_container_size()
 
     def resizeEvent(self, event: QResizeEvent):
-        """Resize the image container and its children to the viewport height."""
+        """Handle widget resize event by recalculating image container size."""
         super().resizeEvent(event)
+        self._update_image_container_size()
+        
+    def showEvent(self, event):
+        """Ensure content size is updated when dialog is shown (after potential geometry restore)."""
+        super().showEvent(event)
+        # Update content size after the dialog is shown and geometry is set
+        self._update_image_container_size()
 
+    def _update_image_container_size(self):
+        """Calculates and sets the size of the image container based on viewport height."""
         # 1. Give the container the full viewport height
         viewport_height = self.scroll_area.viewport().height()
-        # Prevent setting zero height if viewport isn't ready
-        if viewport_height > 0 and self.result_displays:
-            # Calculate dimensions for all ResultImageDisplay widgets and container 
-            total_width = 0
-            left_margin, _, right_margin, _ = self.image_layout.getContentsMargins()
+        # Prevent setting zero height if viewport isn't ready or no displays
+        if viewport_height <= 0 or not self.result_displays:
+            # Set a default minimum size for the container if needed
+            # self.image_container_widget.setMinimumSize(100, 100) 
+            return
+
+        # Calculate dimensions for all ResultImageDisplay widgets and container
+        total_width = 0
+        left_margin, _, right_margin, _ = self.image_layout.getContentsMargins()
+
+        # First pass: Set fixed height on all widgets
+        # This might trigger individual resizeEvents in ResultImageDisplay
+        for w in self.result_displays:
+            w.setFixedHeight(viewport_height)
+
+        # Give Qt a chance to process the height changes and potential resizes
+        QApplication.processEvents()
+
+        # Second pass: Calculate and set the total width based on actual widget sizes
+        for w in self.result_displays:
+            display_width = w.width()
+            # Use sizeHint as a fallback if width is still not properly calculated
+            if display_width <= 10:
+                hint_width = w.sizeHint().width()
+                if hint_width > 10: # Use hint if reasonable
+                    display_width = hint_width
+                elif w._original_pixmap and w._original_pixmap.height() > 0:
+                    aspect_ratio = w._original_pixmap.width() / w._original_pixmap.height()
+                    display_width = int(viewport_height * aspect_ratio)
+                else:
+                    display_width = viewport_height # Default fallback
             
-            # First pass: Set fixed height on all widgets 
-            for w in self.result_displays:
-                w.setFixedHeight(viewport_height)
-            
-            # Make sure we process all Qt events to ensure image scaling happens
-            QApplication.processEvents()
-            
-            # Second pass: Calculate and set the total width based on actual widget sizes
-            for w in self.result_displays:
-                # Get the actual width from each display after height scaling
-                display_width = w.width()
-                if display_width <= 10:  # Fallback if width not yet available
-                    if w._original_pixmap and w._original_pixmap.height() > 0:
-                        # Calculate width based on aspect ratio
-                        aspect_ratio = w._original_pixmap.width() / w._original_pixmap.height()
-                        display_width = int(viewport_height * aspect_ratio)
-                    else:
-                        display_width = viewport_height  # Default if no image
-                
-                total_width += display_width
-                
-            # Add layout spacing and margins
-            total_width += self.image_layout.spacing() * (len(self.result_displays) - 1)
-            total_width += left_margin + right_margin
-            
-            # Set the container dimensions
-            self.image_container_widget.setFixedHeight(viewport_height)
-            self.image_container_widget.setFixedWidth(total_width)
-            
-            # Force layout update
-            self.image_layout.activate()
-            self.logger.debug(self.caller, f"Set container width to {total_width}px for {len(self.result_displays)} images")
+            total_width += display_width
+
+        # Add layout spacing and margins
+        spacing = self.image_layout.spacing()
+        if spacing == -1: spacing = self.style().layoutSpacing(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding, Qt.Orientation.Horizontal)
+        if len(self.result_displays) > 1:
+             total_width += spacing * (len(self.result_displays) - 1)
+             
+        total_width += left_margin + right_margin
+
+        # Set the container dimensions
+        self.image_container_widget.setFixedHeight(viewport_height)
+        # Add a small buffer to width just in case? Sometimes needed.
+        self.image_container_widget.setFixedWidth(int(total_width * 1.01)) 
+
+        # Force layout update seems redundant if we set fixed size
+        # self.image_layout.activate()
+        self.logger.debug(self.caller, f"Set container width to {int(total_width * 1.01)}px for {len(self.result_displays)} images based on viewport height {viewport_height}")
 
     # --- Event Handling --- #
 
@@ -229,12 +270,12 @@ class ReviewPopupDialog(QDialog):
         elif key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp):
              self.logger.debug(self.caller, "Up arrow or Page Up pressed - navigating to previous item")
              # Emit signal to inform FaceReviewPage to navigate to previous item
-             self.navigate_previous.emit()
+             self.request_previous_item.emit()
              # Don't close dialog - FaceReviewPage handles navigation
         elif key in (Qt.Key.Key_Down, Qt.Key.Key_PageDown):
              self.logger.debug(self.caller, "Down arrow or Page Down pressed - navigating to next item")
              # Emit signal to inform FaceReviewPage to navigate to next item
-             self.navigate_next.emit()
+             self.request_next_item.emit()
              # Don't close dialog - FaceReviewPage handles navigation
         elif key == Qt.Key.Key_Escape:
             self.reject() # Close on Escape
@@ -273,14 +314,25 @@ class ReviewPopupDialog(QDialog):
         if self.original_source_path:
             # Emit the signal with the original path and lists of result paths
             self.review_processed.emit(
+                self.person_name,
                 self.original_source_path,
                 approved_result_paths,
                 unapproved_result_paths
             )
+            # --- Let the receiver (FaceReviewPage) close the dialog --- #
+            # self.accept() 
+            # ---------------------------------------------------------- #
         else:
             self.logger.error(self.caller, "Cannot process review, original_source_path is missing!")
             # Optionally show error to user
             self.reject() # Close dialog on error
+
+    def closeEvent(self, event):
+        """Save geometry when the dialog is closed."""
+        self.logger.debug(self.caller, "Saving dialog geometry on close.")
+        geometry_data = self.saveGeometry()
+        self.settings.set(self.GEOMETRY_SETTING_KEY, geometry_data) # QByteArray is handled by QSettings
+        super().closeEvent(event)
 
     def eventFilter(self, watched_object, event):
         """Filter events for child widgets to intercept navigation keys from scroll area."""
@@ -295,5 +347,22 @@ class ReviewPopupDialog(QDialog):
                 return True
         # For other events, use standard event processing
         return super().eventFilter(watched_object, event)
+
+    # --- Public Method to Load New Data --- #
+    def load_review_item(self, 
+                         person_name: str, 
+                         original_source_path: str, 
+                         result_image_paths: List[str]):
+        """Updates the dialog with data for a new review item."""
+        self.logger.debug(self.caller, f"Loading new review item: {person_name} / {Path(original_source_path).name}")
+        
+        # Update internal data storage
+        self.person_name = person_name
+        self.original_source_path = original_source_path
+        self.result_paths = result_image_paths or []
+        
+        # Update the UI elements based on the new data
+        self._update_display_data()
+    # -------------------------------------- #
 
 
