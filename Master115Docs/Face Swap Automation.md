@@ -127,39 +127,44 @@ This page allows the user to approve or reject the generated face swap results.
 
 -   **Result Review Queue:**
     -   **Widget:** A `QListWidget` or `QGridView` displaying thumbnails.
-    -   **Initialization/Update:** Scans the `<AI Root Directory>/Temp/` folder. Groups files by `(<Person_Name>, <Source_Filename>)`.
-    -   **Display Item:** For each group, creates a list/grid item:
-        -   **Thumbnail:** Displays a 100x100 thumbnail of the *first* result image found for that group (e.g., `Temp/<Person_Name> <First_Face_Filename> <Source_Filename>.jpg`). Thumbnails should be loaded asynchronously.
-        -   **Label (Optional):** Could display `<Person_Name>` and `<Source_Filename>`.
-        -   **Data:** Stores the associated Person Name, Source Filename, and the list of all result file paths in `Temp/` for this group.
-    -   **Interaction:** Clicking a thumbnail opens the Review Popup Panel for that group.
+    -   **Initialization/Update:** Scans the `<AI Root Directory>/Temp/` folder for result image files (e.g., `.jpg`). It parses filenames (expected format: `<Person_Name> <Face_Stem> <Source_Stem>.jpg`) to group results. Files are grouped based on the unique combination of `<Person_Name>` and `<Source_Stem>`. This scan happens when the page is shown or refreshed.
+    -   **Display Item:** For each unique `(<Person_Name>, <Source_Stem>)` group found, creates a list/grid item:
+        -   **Thumbnail:** Displays a 100x100 thumbnail of the *first* result image found for that group (e.g., one of the `Temp/<Person_Name> <Some_Face_Stem> <Source_Stem>.jpg` files). Thumbnails should be loaded asynchronously.
+        -   **Label (Optional):** Could display `<Person_Name>` / `<Source_Stem>`.
+        -   **Data:** Stores the associated `person_name`, `source_stem`, and the list of all result file paths (`result_image_paths`) found in `Temp/` belonging to this group.
+    -   **Interaction:** Clicking a thumbnail opens the Review Popup Panel for that group, passing the stored data (person name, source stem, result image paths).
 
--   **Review Popup Panel (Modal Dialog):**
-    -   **Trigger:** Displayed when a thumbnail in the Result Review Queue is clicked.
-    -   **Resizable:** The dialog should be resizable by the user.
+-   **Review Popup Panel (Non-Modal Dialog):**
+    -   **Trigger:** Displayed when a thumbnail in the Result Review Queue is clicked. It's non-modal, managed by the `FaceReviewPage`.
+    -   **Resizable:** The dialog should be resizable by the user, and its geometry is saved/restored.
     -   **Content:**
-        -   **Title:** Displays "Reviewing: `<Person_Name>` on `<Source_Filename>`".
-        -   **Image Display Area:** Shows all generated result images for the selected group (`Temp/<Person_Name> <Face_Filename> <Source_Filename>.jpg`) side-by-side. Images should be scaled appropriately to fit while maintaining aspect ratio. A horizontal scrollbar might be needed if there are many images.
-        -   **Labeling:** Each displayed result image has a small, semi-transparent circular overlay (e.g., top-left corner) containing a single digit (1, 2, 3,... corresponding to the face file used).
-        -   **Selection State:** When an image is "checked" (approved) via hotkey:
-            -   Display a second overlay: a semi-transparent (50% opacity) green circle containing a white checkmark (✓).
+        -   **Title:** Displays "Reviewing: `<Person_Name>` / `<Source_Stem>`".
+        -   **Image Display Area:** Shows all generated result images for the selected group (obtained from the `result_image_paths` list) side-by-side in a horizontally scrollable area. Images are scaled appropriately to fit vertically while maintaining aspect ratio.
+        -   **Labeling:** Each displayed result image has:
+            -   A small, semi-transparent circular overlay (e.g., top-left corner) containing a single digit (1, 2, 3,... corresponding to its order in the visible list).
+            -   A semi-transparent overlay near the bottom-center containing the original face's avatar (circular thumbnail loaded once) and the face filename stem (e.g., "01", "02").
+        -   **Selection State:** When an image is "checked" (approved) via hotkey or click:
+            -   The top-left digit overlay changes appearance (e.g., green background).
             -   Internally track the approval state for each image. Default state is "unchecked".
     -   **Hotkeys (Dialog must have focus):**
-        -   **Up Arrow / Page Up:** Closes the current popup, selects the *previous* item in the Result Review Queue, and opens the Review Popup for that previous item. Wraps around if at the top.
-        -   **Down Arrow / Page Down:** Closes the current popup, selects the *next* item in the Result Review Queue, and opens the Review Popup for that next item. Wraps around if at the bottom.
+        -   **Up Arrow / Page Up:** Signals the `FaceReviewPage` to navigate to the *previous* item in the Result Review Queue. The `FaceReviewPage` updates the *existing* popup dialog with the new item's data. Wraps around if at the top.
+        -   **Down Arrow / Page Down:** Signals the `FaceReviewPage` to navigate to the *next* item in the Result Review Queue. The `FaceReviewPage` updates the *existing* popup dialog with the new item's data. Wraps around if at the bottom.
         -   **0-9:** Toggles the "checked" state of the *currently visible* image corresponding to the digit (1-9, 0 potentially for the 10th if needed, based on the dynamic numbering after using '-'). Updates the visual checkmark overlay.
         -   **- (Minus key):**
-            - Finds all *visible* images that are currently "checked".
-            - Unchecks (deselects) each of these found images.
-            - Hides these images from the dialog view.
-            - Re-numbers the overlays of the remaining visible images sequentially (1, 2, 3,...).
+            -   Finds all *visible* images that are currently "checked".
+            -   Unchecks (deselects) each of these found images.
+            -   Hides these images from the dialog view.
+            -   Re-numbers the overlays of the remaining visible images sequentially (1, 2, 3,...).
+        -   **Enter Key:**
+            -   Finds all *visible* images that are currently "unchecked" (not approved).
+            -   Hides these images from the dialog view.
+            -   Unchecks (deselects) any remaining visible images (which must have been approved).
+            -   Re-numbers the overlays of the remaining visible images sequentially (1, 2, 3,...).
         -   **+ (Plus key):**
-            - Identifies all *currently visible* images that are "checked".
-            - Moves each checked image file from `<AI Root Directory>/Temp/` to `<AI Root Directory>/FaceSwapped/`.
-            - Deletes all *currently visible* images that are "unchecked" for this group from `<AI Root Directory>/Temp/`. (Note: Previously hidden images are not affected by this action).
-            - Removes the corresponding thumbnail item from the Result Review Queue UI.
-            - Closes the current popup.
-            - Automatically selects the *next* item in the Result Review Queue (if any) and opens its Review Popup. If it was the last item, simply closes the popup.
+            -   Identifies all *currently loaded* (visible or hidden by '-' or Enter) images that are "checked" (`approved_paths`) and those that are "unchecked" (`unapproved_paths`).
+            -   Emits a `review_processed` signal containing the `person_name`, `source_stem`, `approved_paths` list, and `unapproved_paths` list.
+            -   The `FaceReviewPage` receives this signal and calls `ReviewManager.process_review_decision(approved_paths, unapproved_paths)` to handle file operations (moving approved to `FaceSwapped/`, deleting unapproved from `Temp/`).
+            -   After the `ReviewManager` call returns successfully, the `FaceReviewPage` removes the corresponding item from its `QListWidget` and attempts to navigate to the next available item in the list (updating the dialog with the new item or closing it if the list becomes empty).
 
 ## 4. UI Components
 
@@ -244,98 +249,51 @@ The core automation logic triggered by the "Start" button on the Face Dashboard.
 
 -   **Purpose:** The `PeopleManager` serves as a centralized, singleton service responsible for discovering and managing information about the "people" available for face swapping. Its primary role is to abstract the complexities of filesystem scanning and caching away from the UI components like `PeopleGrid`. Think of it as the librarian for your face assets. Using a singleton pattern (`PeopleManager.instance()`) ensures that all parts of the application access the same, consistent person data and cache.
 
-### 5.2. Review Manager (`./master115/models/review_manager.py`): Bridging Completion and Review
+### 5.2. Review Manager (`./master115/models/review_manager.py`): Discovering and Processing Reviews
 
 **Purpose and Rationale:**
 
-As the `FaceSwapManager` completes processing all selected faces for a particular source image, we reach a critical transition point. The raw processing is done, but the results haven't been approved by the user yet. We need a reliable way to:
+The `ReviewManager` is a singleton service responsible for handling the *results* of the face swap process that require user review. Its core responsibilities have shifted away from maintaining a persistent state file (`PendingReview.json`).
 
-1.  **Persist State:** Remember which source images are fully processed and which generated temporary files belong to them, even if the application restarts.
-2.  **Manage Files:** Move the original source image out of the input queue (`SourceImages/`) and into a holding area (`SourceImages/Completed/`) to prevent it from being processed again.
-3.  **Notify UI:** Inform the `FaceReviewPage` that new results are available for inspection.
+-   **Discovering Reviewable Items:** Its primary dynamic function is to scan the `<AI Root Directory>/Temp/` directory. It parses the filenames of the result images found there (e.g., `.jpg`) to identify unique groups of results belonging to the same original source image (based on `<Person_Name>` and `<Source_Stem>` parsed from the filename). This scanning provides the `FaceReviewPage` with the list of items currently awaiting review.
+-   **Processing Review Decisions:** Its other main function is to execute the user's decision from the review popup. Based on the lists of approved and unapproved file paths provided by the UI, it performs the necessary file operations: moving approved files from `Temp/` to the final `FaceSwapped/` directory and deleting unapproved files from `Temp/`.
 
-While the `FaceSwapManager` *could* handle these tasks, it would tightly couple the swap orchestration logic with state persistence and file system management specific to the review process. Similarly, having the `FaceReviewPage` manage the state file directly would burden the UI component with non-UI responsibilities.
+**Key Methods:**
 
-Therefore, we introduce the `ReviewManager` as a dedicated, centralized service (implemented as a singleton) to handle this specific responsibility. It acts as the single source of truth for the "pending review" state, decoupling the `FaceSwapManager` (which only *reports* completion) from the `FaceReviewPage` (which *consumes* the pending review list). This adheres to the principle of Separation of Concerns, making the system easier to understand, test, and maintain.
+-   **`scan_temp_for_review_items() -> List[Dict]`:**
+    -   Scans the `Temp/` directory for result images (e.g., `.jpg`).
+    -   Parses filenames (e.g., `<Person_Name> <Face_Stem> <Source_Stem>.jpg`).
+    -   Groups results by the unique `(<Person_Name>, <Source_Stem>)` combination.
+    -   Returns a list of dictionaries, each containing `person_name`, `source_stem`, and `result_image_paths` (a list of full paths to the files in `Temp/` for that group), typically sorted for consistent UI presentation.
+-   **`process_review_decision(approved_paths: List[str], unapproved_paths: List[str]) -> bool`:**
+    -   Takes two lists of full file paths (originating from the `Temp/` directory).
+    -   Ensures the `FaceSwapped/` directory exists.
+    -   Moves files listed in `approved_paths` to the `FaceSwapped/` directory. Includes safety checks to ensure paths are within `Temp/`.
+    -   Deletes files listed in `unapproved_paths` from the `Temp/` directory. Includes safety checks.
+    -   Includes error handling for file operations.
+    -   Returns `True` if operations were attempted, `False` on critical setup errors (like invalid AI Root or inability to create `FaceSwapped/`).
 
-**Core Responsibilities:**
+**Removed Functionality:**
 
-The `ReviewManager` is solely responsible for the lifecycle of items awaiting user review:
+-   The manager no longer maintains an internal list (`_pending_reviews`) or reads/writes a `PendingReview.json` file. State is determined purely by the contents of the `Temp/` directory.
+-   Methods like `add_pending_review`, `add_person_source_review`, `mark_source_completed_and_move`, `get_pending_reviews`, `get_review_details`, `clear_all_pending_reviews` have been removed as they related to the old JSON-based state management.
+-   Signals like `review_item_added` have been removed.
 
-1.  **Receiving Completion Notification:** It exposes the `add_pending_review` method, which the `FaceSwapManager` calls when it determines all faces have been successfully processed for a given source image.
-2.  **Moving Completed Source Files:** Upon receiving a notification via `add_pending_review`, the `ReviewManager` takes ownership of moving the original source image file from its location in `<AI Root Directory>/SourceImages/` to the `<AI Root Directory>/SourceImages/Completed/` subdirectory. This ensures the source file is archived correctly *before* its state is recorded.
-3.  **Maintaining `PendingReview.json`:** It manages the `PendingReview.json` file located in the AI Root Directory. This file stores a list of all source images that have been fully processed and are awaiting review. The `ReviewManager` handles reading this file on startup, adding new entries when `add_pending_review` is called (after a successful file move), removing entries when the `FaceReviewPage` signals completion (via `remove_pending_review`), and writing changes back to the file persistently. It includes error handling for file I/O and potential JSON corruption (creating backups if needed).
-4.  **Notifying the UI:** After successfully moving the source file and updating the JSON, it emits the `review_item_added(dict)` signal. This signal carries the dictionary representing the newly added review item, allowing the `FaceReviewPage` to update its display dynamically without needing to constantly poll or rescan.
-
-**Process Flow:**
-
-The interaction sequence involving the `ReviewManager` is as follows:
-
-1.  `FaceSwapManager`'s `_on_task_complete` slot receives a `task_complete` signal from a `FaceSwapWorker`.
-2.  It updates its internal progress tracker (`_source_image_progress`) for the specific source image associated with the task.
-3.  It checks if the number of completed faces for that source image now equals the total number expected.
-4.  If the source image is fully processed, `FaceSwapManager` calls `_handle_source_completion`.
-5.  Inside `_handle_source_completion`, `FaceSwapManager` calls `ReviewManager.instance().add_pending_review(original_source_path, result_paths)`.
-6.  `ReviewManager`'s `add_pending_review` method:
-    *   Calculates the destination path in the `Completed/` folder.
-    *   Attempts to move the `original_source_path` file to the `completed_path`.
-    *   If the move succeeds:
-        *   Creates a dictionary containing the original path, completed path, and the list of result image paths.
-        *   Adds this dictionary to its internal list (`_pending_reviews`).
-        *   Saves the updated list to `PendingReview.json`.
-        *   Emits the `review_item_added` signal with the newly created dictionary as the payload.
-    *   If the move fails, it logs an error and takes no further action for that item.
-7.  `FaceReviewPage`, having connected to the `review_item_added` signal during its initialization, receives the signal in its `_on_review_item_added` slot.
-8.  The slot parses the received dictionary and adds a corresponding `ReviewQueueItem` widget to its `QListWidget`, making the newly completed item visible to the user for review.
-
-**`PendingReview.json` Format:**
-
-The `PendingReview.json` file stores a JSON list (array). Each element in the list is an object (dictionary) representing one source image group that is pending review. The structure of each object is:
-
-```json
-[
-  {
-    "original_source_path": "D:\\AIRoot\\SourceImages\\source_image1.jpg",
-    "completed_source_path": "D:\\AIRoot\\SourceImages\\Completed\\source_image1.jpg",
-    "result_image_paths": [
-      "D:\\AIRoot\\Temp\\PersonA Face1 source_image1.jpg",
-      "D:\\AIRoot\\Temp\\PersonB Face2 source_image1.jpg"
-    ]
-  },
-  {
-    "original_source_path": "D:\\AIRoot\\SourceImages\\another_source.png",
-    "completed_source_path": "D:\\AIRoot\\SourceImages\\Completed\\another_source.png",
-    "result_image_paths": [
-       "D:\\AIRoot\\Temp\\PersonA Face1 another_source.jpg",
-       "D:\\AIRoot\\Temp\\PersonB Face2 another_source.jpg"
-    ]
-  }
-]
-```
-
-*   `original_source_path`: The absolute path (as a string) to the source image *before* it was moved. This serves as a unique identifier for the review item.
-*   `completed_source_path`: The absolute path (as a string) to the source image *after* it was moved to the `Completed/` directory.
-*   `result_image_paths`: A list containing the absolute paths (as strings) to all the generated face swap images stored in the `Temp/` directory for this specific source image.
-
-**Thread Safety:**
-
-Since the `task_complete` signal from `FaceSwapWorker` instances might arrive from different threads, and the UI updates triggered by `review_item_added` happen on the main GUI thread, the `ReviewManager` uses a `threading.Lock` (`_lock`) to protect all access to its internal `_pending_reviews` list and the read/write operations on the `PendingReview.json` file. This prevents race conditions and ensures data integrity. Qt's signal/slot mechanism handles the cross-thread communication safely for the `review_item_added` signal.
-
-### 5.2. Initialization
+### 5.3. Initialization
 
 1.  Read the "AI Root Directory" from preferences. Validate its existence.
 2.  Identify selected persons from the `PersonBadge` toggles on the Dashboard. Validate at least one is selected.
 3.  Scan `<AI Root Directory>/Faces/` to get the full list of face files for each selected person. Store this mapping (Person Name -> List of Face File Paths).
 4.  Scan `<AI Root Directory>/SourceImages/` (excluding the `Completed/` subdirectory) to get the list of source image files to process.
 
-### 5.3. WebDriver Setup
+### 5.4. WebDriver Setup
 
 -   **Manager:** Use `webdriver-manager` for Python.
 -   **Target Browser:** Google Chrome (system installation, *not* 115chrome).
 -   **Driver Path:** Configure `webdriver-manager` to download/manage the `chromedriver.exe` specifically in `D:\\projects\\googlechrome_driver`. This ensures isolation from any drivers used by 115chrome.
 -   **Instantiation:** Each worker thread (see below) will manage its own WebDriver instance.
 
-### 5.4. Worker Threads
+### 5.5. Worker Threads
 
 -   **Concurrency:** To avoid blocking the UI and potentially speed up processing, the core face swap operations will run in separate threads (`QThread`).
 -   **Strategy:** Determine the best threading strategy. Options:
@@ -376,7 +334,7 @@ Since the `task_complete` signal from `FaceSwapWorker` instances might arrive fr
         -   Log its shutdown.
         -   Emit a finished signal to the main thread.
 
-### 5.5. Graceful Stop and Kill
+### 5.6. Graceful Stop and Kill
 
 -   **Graceful Stop:**
     -   The main thread sets a flag (e.g., `threading.Event`) that all worker threads periodically check.
@@ -637,32 +595,48 @@ This section outlines the detailed steps required to implement the AI Face Swap 
 - [ ] **Task Manager:** Implement a thread-safe central manager class (e.g., using `threading.Lock` or `queue.Queue`) to track the status of all `(source_image, person_name, face_image)` swap tasks. *(Partially done - manager coordinates workers but lacks specific source completion tracking)*
 - [x] **Dashboard Start Logic (Full):**
     - [x] Modify the "Start" handler to get *all* selected `PersonBadge` data (person -> list of face paths). *(Done in `FaceSwapManager.start_process`)*
-    - [x] Get *all* source image paths from `<AI Root Directory>/SourceImages/` (excluding `Completed/`). *(Done in `FaceSwapManager._get_all_source_images`)*
-    - [ ] Initialize the central task manager with all pending tasks. *(Partially done - manager exists, but detailed task tracking for source completion is missing)*
-    - [x] Create a shared stop event (`threading.Event`). *(Done in `FaceSwapManager.start_process`)*
-    - [x] For each selected face file across all selected persons:
-        - [x] Create a `FaceSwapWorker` instance, passing its assigned `person_name`, `face_image_path`, the *full list* of source image paths, and the shared stop event. *(Done in `FaceSwapManager.start_process`)*
-        - [x] Connect worker signals to the dashboard/manager as needed. *(Done in `FaceSwapManager.start_process`)*
-        - [x] Start the worker thread. *(Done in `FaceSwapManager.start_process`)*
-    - [x] Update UI state (buttons, icons). *(Done via `process_started`/`process_finished` signals)*
-- [x] **Worker Run Logic (Actual):**
-    - [x] Replace simulation logic in `FaceSwapWorker.run` with actual WebDriver automation:
-        - [x] Initialize WebDriver instance using the configured setup (`initialize_chrome_driver`).
-        - [x] Navigate to the face swap service (Pixnova URL).
-        - [x] Perform the *one-time* upload of the worker's assigned `face_image_path`. Handle WebDriver waits and potential errors. *(Done, uses thumbnail check)*
-        - [x] Loop through the `source_image_paths` list.
-        - [x] **Check Stop Event:** Before processing each source image, check the shared `stop_event.is_set()`. If set, break the loop.
-        - [x] Upload the *current* `source_image_path`. *(Done, uses thumbnail check)*
-        - [x] Initiate the swap via WebDriver interactions. *(Done, clicks start button)*
-        - [x] Wait for the result `<img>` tag to be visible. Handle timeouts and errors. *(Done)*
-        - [x] Get the `.webp` image URL from the `src` attribute. *(Done)*
-        - [x] If URL found, use `requests` to fetch the `.webp` image bytes. *(Done)*
-        - [x] Use `Pillow` to open the `.webp` image bytes, convert to RGB, and save as JPG to `<AI Root Directory>/Temp/` with the correct naming convention (e.g., 75% quality). Handle image processing/saving errors. *(Done, including filename fix)*
-        - [x] Emit `task_complete` or `task_failed` signal with relevant info... *(Done)*
-        - [x] **Notify Manager:** After successful save, notify the central task manager... *(Worker emits `task_complete` signal, received by `FaceSwapManager`)*
-    - [x] **Worker Cleanup:** Ensure `driver.quit()` is called in a `finally` block within the `run` method... *(Done)*
-    - [x] Emit `finished` signal when the `run` method exits. *(Done)*
-- [ ] **Task Manager Logic:** *(Responsibilities now split between FaceSwapManager and ReviewManager)*
-    - [x] Implement the method to receive notifications from workers. *(`FaceSwapManager._on_task_complete` exists)*
-    - [x] Track completed tasks for each source image. *(Done in `FaceSwapManager._source_image_progress`)*
-    - [x] When all faces for a given source image are reported as complete, move the original `source_image` file from `SourceImages/` to `SourceImages/Completed/` and log this action. *(Done by `ReviewManager.add_pending_review` after notification from `FaceSwapManager`)*
+    - [x] Get *all* source image paths from `<AI Root Directory>/SourceImages/` (excluding `Completed/`).
+    - [x] **Task Completion Handling (`_on_task_complete`):**
+        -   Slot connected to worker `task_complete`.
+        -   Logs success message.
+        -   Updates internal progress trackers (`_person_source_progress`) for the specific face/source combination. Adds the `output_path` to the results set for that person/source.
+        -   Checks if the person has completed all their faces for this source image.
+        -   If a person completes a source, updates the overall source completion tracker (`_source_overall_completion`).
+        -   Checks if *all* selected persons have completed this source image (`_source_overall_completion` matches `_current_run_selected_persons`).
+        -   **If a source image is fully completed by all selected people:**
+            -   If the "Move Source File" setting for the current run is enabled, it *directly* attempts to move the original source image file from `<AI Root Directory>/SourceImages/` to `<AI Root Directory>/SourceImages/Completed/`. Handles potential errors during the move.
+            -   Removes the completed source path from the internal progress trackers.
+            -   **Note:** It does *not* interact with `ReviewManager` at this stage. `ReviewManager` discovers completed items later by scanning the `Temp/` directory when the user navigates to the Face Review page.
+    -   **Task Failure Handling (`_on_task_failed`):**
+        -   Slot connected to worker `task_failed`.
+        -   Logs failure message.
+        -   Updates internal progress trackers (`_person_source_progress`) for the specific face/source combination.
+        -   Checks if the person has completed all their faces for this source image.
+        -   If a person completes a source, updates the overall source completion tracker (`_source_overall_completion`).
+        -   Checks if *all* selected persons have completed this source image (`_source_overall_completion` matches `_current_run_selected_persons`).
+        -   **If a source image is fully completed by all selected people:**
+            -   If the "Move Source File" setting for the current run is enabled, it *directly* attempts to move the original source image file from `<AI Root Directory>/SourceImages/` to `<AI Root Directory>/SourceImages/Completed/`. Handles potential errors during the move.
+            -   Removes the completed source path from the internal progress trackers.
+            -   **Note:** It does *not* interact with `ReviewManager` at this stage. `ReviewManager` discovers completed items later by scanning the `Temp/` directory when the user navigates to the Face Review page.
+    -   **Task Completion Handling (`_on_task_complete`):**
+        -   Slot connected to worker `task_complete`.
+        -   Logs success message.
+        -   Updates internal progress trackers (`_person_source_progress`) for the specific face/source combination. Adds the `output_path` to the results set for that person/source.
+        -   Checks if the person has completed all their faces for this source image.
+        -   If a person completes a source, updates the overall source completion tracker (`_source_overall_completion`).
+        -   Checks if *all* selected persons have completed this source image (`_source_overall_completion` matches `_current_run_selected_persons`).
+        -   **If a source image is fully completed by all selected people:**
+            -   If the "Move Source File" setting for the current run is enabled, it *directly* attempts to move the original source image file from `<AI Root Directory>/SourceImages/` to `<AI Root Directory>/SourceImages/Completed/`. Handles potential errors during the move.
+            -   Removes the completed source path from the internal progress trackers.
+            -   **Note:** It does *not* interact with `ReviewManager` at this stage. `ReviewManager` discovers completed items later by scanning the `Temp/` directory when the user navigates to the Face Review page.
+    -   **Task Failure Handling (`_on_task_failed`):**
+        -   Slot connected to worker `task_failed`.
+        -   Logs failure message.
+        -   Updates internal progress trackers (`_person_source_progress`) for the specific face/source combination.
+        -   Checks if the person has completed all their faces for this source image.
+        -   If a person completes a source, updates the overall source completion tracker (`_source_overall_completion`).
+        -   Checks if *all* selected persons have completed this source image (`_source_overall_completion` matches `_current_run_selected_persons`).
+        -   **If a source image is fully completed by all selected people:**
+            -   If the "Move Source File" setting for the current run is enabled, it *directly* attempts to move the original source image file from `<AI Root Directory>/SourceImages/` to `<AI Root Directory>/SourceImages/Completed/`. Handles potential errors during the move.
+            -   Removes the completed source path from the internal progress trackers.
+            -   **Note:** It does *not* interact with `ReviewManager` at this stage. `ReviewManager` discovers completed items later by scanning the `Temp/` directory when the user navigates to the Face Review page.
