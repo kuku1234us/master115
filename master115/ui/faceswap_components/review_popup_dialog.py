@@ -6,13 +6,26 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QHBoxLayout,
     QApplication, QDialogButtonBox, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QSize, QByteArray, QTimer
+from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QSize, QByteArray, QTimer, QPropertyAnimation, QEasingCurve, QAbstractAnimation
 from PyQt6.QtGui import QKeyEvent, QResizeEvent
 
 # Local Imports
 from .result_image_display import ResultImageDisplay # Will be created next
 from qt_base_app.models import Logger
 from qt_base_app.models import SettingsManager # Import SettingsManager
+
+# <<< ADDED Subclass >>>
+class InterceptingScrollArea(QScrollArea):
+    """A QScrollArea that ignores arrow key presses, allowing them to propagate."""
+    def keyPressEvent(self, event: QKeyEvent):
+        key = event.key()
+        # Check for all arrow keys and PageUp/PageDown
+        if key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right,
+                   Qt.Key.Key_PageUp, Qt.Key.Key_PageDown):
+            event.ignore() # Allow parent widget (dialog) to handle these
+        else:
+            # Handle other keys (like Home, End if needed) normally
+            super().keyPressEvent(event)
 
 class ReviewPopupDialog(QDialog):
     """
@@ -63,6 +76,7 @@ class ReviewPopupDialog(QDialog):
         self.ai_root_dir = Path(ai_root_dir_str) # Store as Path object
         # self.source_filename: str = "Unknown Source" # No longer needed directly
         self.result_displays: List[ResultImageDisplay] = []
+        self._scroll_animation: QPropertyAnimation | None = None # Add member variable
 
         self.setWindowTitle("Face Swap Review") # Generic initial title
         self.setModal(False) # Make it non-modal now, managed by FaceReviewPage
@@ -99,15 +113,13 @@ class ReviewPopupDialog(QDialog):
         # ------------------- #
 
         # --- Scroll Area for Images --- #
-        self.scroll_area = QScrollArea()
+        self.scroll_area = InterceptingScrollArea()
         # Ensure scroll area expands vertically
         self.scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.scroll_area.setWidgetResizable(False) # Let content determine its size
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff) # Only horizontal scroll needed
 
-        # Install event filter to intercept keyboard events from scroll area
-        self.scroll_area.installEventFilter(self)
         # Set strong focus policy to ensure dialog gets keyboard focus
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -280,42 +292,178 @@ class ReviewPopupDialog(QDialog):
 
         self.logger.debug(self.caller, f"_calculate_and_set_container_width: Set container width to {final_width}px for {len(valid_widgets)} images.")
 
+        # <<< ADDED: Reset scrollbar to minimum after width is set >>>
+        scrollbar = self.scroll_area.horizontalScrollBar()
+        if scrollbar:
+            self.logger.debug(self.caller, "Resetting scrollbar to minimum.")
+            # Stop any ongoing scroll animation before setting value directly
+            if self._scroll_animation and self._scroll_animation.state() == QAbstractAnimation.State.Running:
+                 self.logger.debug(self.caller, "Stopping scroll animation before resetting position.")
+                 self._scroll_animation.stop() # Slot will set self._scroll_animation to None
+            # Set value directly for instant reset
+            scrollbar.setValue(scrollbar.minimum())
+        # <<< END ADDED CODE >>>
+
     # --- Event Handling --- #
 
     def keyPressEvent(self, event: QKeyEvent):
         """Handle hotkey presses."""
         key = event.key()
-        self.logger.debug(self.caller, f"keyPressEvent received key: {key} (Text: '{event.text()}')") # Log ALL key presses
+        self.logger.debug(self.caller, f"keyPressEvent received key: {key} (Text: '{event.text()}')")
+        
+        handled = False # Flag to track if we processed the key
 
-        # TODO: Implement hotkey logic (0-9, +, Up/Down/PgUp/PgDn)
+        # Digit keys (1-9, 0)
         if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
-             self.logger.debug(self.caller, f"Digit key {key - Qt.Key.Key_0} pressed, calling _handle_digit_key...")
              self._handle_digit_key(key - Qt.Key.Key_0)
+             handled = True
         elif key == Qt.Key.Key_0:
-             self.logger.debug(self.caller, "Digit key 0 pressed, calling _handle_digit_key...")
-             self._handle_digit_key(10) # Handle 0 as 10th item if needed
+             self._handle_digit_key(10)
+             handled = True
+        # Action keys
         elif key == Qt.Key.Key_Plus:
              self._handle_plus_key()
-        elif key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp):
-             self.logger.debug(self.caller, "Up arrow or Page Up pressed - navigating to previous item")
-             # Emit signal to inform FaceReviewPage to navigate to previous item
-             self.request_previous_item.emit()
-             # Don't close dialog - FaceReviewPage handles navigation
-        elif key in (Qt.Key.Key_Down, Qt.Key.Key_PageDown):
-             self.logger.debug(self.caller, "Down arrow or Page Down pressed - navigating to next item")
-             # Emit signal to inform FaceReviewPage to navigate to next item
-             self.request_next_item.emit()
-             # Don't close dialog - FaceReviewPage handles navigation
+             handled = True
         elif key == Qt.Key.Key_Minus:
             self._handle_minus_key()
+            handled = True
         elif key == Qt.Key.Key_Enter or key == Qt.Key.Key_Return:
             self._handle_enter_key()
+            handled = True
+        # Vertical Navigation (Signals emitted here)
+        elif key in (Qt.Key.Key_Up, Qt.Key.Key_PageUp):
+             self.request_previous_item.emit()
+             handled = True
+        elif key in (Qt.Key.Key_Down, Qt.Key.Key_PageDown):
+             self.request_next_item.emit()
+             handled = True
+        # Horizontal Scrolling
+        elif key == Qt.Key.Key_Left:
+             self.logger.debug(self.caller, "Left arrow pressed - scrolling left")
+             self._scroll_left()
+             handled = True
+        elif key == Qt.Key.Key_Right:
+             self.logger.debug(self.caller, "Right arrow pressed - scrolling right")
+             self._scroll_right()
+             handled = True
+        # Scroll to Start/End
+        elif key == Qt.Key.Key_Slash or key == Qt.Key.Key_Home: # Added Home
+             self.logger.debug(self.caller, f"Slash/Home key ({key}) pressed - scrolling to start")
+             self._scroll_to_start()
+             handled = True
+        elif key == Qt.Key.Key_Asterisk or key == Qt.Key.Key_End: # Added End
+             self.logger.debug(self.caller, f"Asterisk/End key ({key}) pressed - scrolling to end")
+             self._scroll_to_end()
+             handled = True
+        # Other
         elif key == Qt.Key.Key_Escape:
             self.reject() # Close on Escape
+            handled = True
+            
+        # Explicitly accept the event if handled
+        if handled:
+            event.accept()
         else:
-            super().keyPressEvent(event) # Pass other keys to base class
+            # Pass unhandled keys to the base class
+            super().keyPressEvent(event)
 
-    # --- Hotkey Action Methods (Placeholders) --- #
+    # --- Scrolling Helper Methods ---
+
+    def _get_first_visible_photo_width(self) -> int:
+        """Gets the width of the first visible ResultImageDisplay widget."""
+        if not hasattr(self, 'result_displays') or not self.result_displays:
+            return 200 # Default width if no displays exist
+
+        for widget in self.result_displays:
+             # Ensure widget is valid and visible before getting width
+             if widget and widget.isVisible():
+                 # <<< Return only the widget width >>>
+                 width = widget.width()
+                 # Return a reasonable minimum if width isn't calculated yet
+                 return width if width > 10 else 200
+
+        return 200 # Default if none are visible
+
+    def _animate_scroll(self, target_value: int):
+        """Animates the horizontal scrollbar to the target value."""
+        scrollbar = self.scroll_area.horizontalScrollBar()
+        if not scrollbar: return
+
+        current_value = scrollbar.value()
+
+        # Clamp target value just in case
+        target_value = max(scrollbar.minimum(), target_value)
+        target_value = min(scrollbar.maximum(), target_value)
+
+        if current_value == target_value:
+            # Already at the target, no need to animate
+            return
+
+        # Stop existing animation if running
+        if self._scroll_animation and self._scroll_animation.state() == QAbstractAnimation.State.Running:
+            self.logger.debug(self.caller, "Stopping existing scroll animation.")
+            # Stop should trigger the finished signal, leading to cleanup by the slot
+            self._scroll_animation.stop()
+            # Do NOT set to None here, let the slot handle it after finished signal
+            # Optional: self._scroll_animation = None # Safer potentially -> Removed
+
+        self.logger.debug(self.caller, f"Animating scroll from {current_value} to {target_value}")
+
+        # Create and configure the animation
+        self._scroll_animation = QPropertyAnimation(scrollbar, b"value", self)
+        self._scroll_animation.setDuration(250) # Duration in milliseconds
+        self._scroll_animation.setStartValue(current_value)
+        self._scroll_animation.setEndValue(target_value)
+        self._scroll_animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+        # <<< Connect the finished signal BEFORE starting >>>
+        self._scroll_animation.finished.connect(self._on_scroll_animation_finished)
+
+        # Start animation - DeleteWhenStopped ensures cleanup after 'finished' signal
+        self._scroll_animation.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def _on_scroll_animation_finished(self):
+        """Slot called when the scroll animation finishes or is stopped."""
+        self.logger.debug(self.caller, "Scroll animation finished signal received.")
+        # Set the reference to None *after* Qt has finished with the object
+        # Check if it's the *current* animation finishing before nullifying
+        # (Though with DeleteWhenStopped, this check might be redundant, but safer)
+        # if self._scroll_animation and not self._scroll_animation.state() == QAbstractAnimation.State.Running:
+        self._scroll_animation = None
+
+    def _scroll_left(self):
+        """Scrolls the horizontal scrollbar left by 1.5 photo widths (animated)."""
+        scrollbar = self.scroll_area.horizontalScrollBar()
+        if not scrollbar: return
+
+        photo_width = self._get_first_visible_photo_width()
+        scroll_amount = int(photo_width * 1.5)
+        target_value = scrollbar.value() - scroll_amount
+        self._animate_scroll(target_value) # Use animation helper
+
+    def _scroll_right(self):
+        """Scrolls the horizontal scrollbar right by 1.5 photo widths (animated)."""
+        scrollbar = self.scroll_area.horizontalScrollBar()
+        if not scrollbar: return
+
+        photo_width = self._get_first_visible_photo_width()
+        scroll_amount = int(photo_width * 1.5)
+        target_value = scrollbar.value() + scroll_amount
+        self._animate_scroll(target_value) # Use animation helper
+
+    def _scroll_to_start(self):
+        """Scrolls the horizontal scrollbar all the way to the left (minimum, animated)."""
+        scrollbar = self.scroll_area.horizontalScrollBar()
+        if scrollbar:
+            self._animate_scroll(scrollbar.minimum()) # Use animation helper
+
+    def _scroll_to_end(self):
+        """Scrolls the horizontal scrollbar all the way to the right (maximum, animated)."""
+        scrollbar = self.scroll_area.horizontalScrollBar()
+        if scrollbar:
+            self._animate_scroll(scrollbar.maximum()) # Use animation helper
+
+    # --- Hotkey Action Methods ---
 
     def _handle_digit_key(self, number: int):
         """Toggles the approval state for the image corresponding to the digit."""
@@ -399,13 +547,27 @@ class ReviewPopupDialog(QDialog):
                       self.logger.debug(self.caller, "Deselected all visible approved items (no items hidden).")
 
     def _handle_plus_key(self):
-        """Handles the '+' key press: Gathers decisions and emits signal."""
+        """Handles the '+' key press: Gathers decisions and emits signal if any items are approved."""
         self.logger.debug(self.caller, "'+' key pressed. Gathering review decisions...")
+
+        # <<< ADDED CHECK: Ensure at least one item is approved >>>
+        any_approved = False
+        for display_widget in self.result_displays:
+            if display_widget.get_approval_state():
+                any_approved = True
+                break # Found one, no need to check further
+        
+        if not any_approved:
+            self.logger.info(self.caller, "'+' key pressed, but no images are approved. Doing nothing.")
+            # Optionally provide user feedback (e.g., status bar message, brief popup) if desired
+            return
+        # <<< END ADDED CHECK >>>
 
         approved_result_paths: List[str] = []
         unapproved_result_paths: List[str] = []
 
         # 1. Iterate through displayed images and categorize paths
+        #    (This loop now runs only if at least one item was approved)
         for display_widget in self.result_displays:
             img_path_str = str(display_widget.get_image_path().resolve()) # Use resolved string path
             if display_widget.get_approval_state():
@@ -424,8 +586,8 @@ class ReviewPopupDialog(QDialog):
                 approved_result_paths,
                 unapproved_result_paths
             )
-            # --- Let the receiver (FaceReviewPage) close the dialog --- #
-            # self.accept() 
+            # --- Let the receiver (FaceReviewPage) close the dialog ---
+            # self.accept()
             # ---------------------------------------------------------- #
         else:
             self.logger.error(self.caller, "Cannot process review, source_stem is missing!")
@@ -438,20 +600,6 @@ class ReviewPopupDialog(QDialog):
         geometry_data = self.saveGeometry()
         self.settings.set(self.GEOMETRY_SETTING_KEY, geometry_data) # QByteArray is handled by QSettings
         super().closeEvent(event)
-
-    def eventFilter(self, watched_object, event):
-        """Filter events for child widgets to intercept navigation keys from scroll area."""
-        if watched_object == self.scroll_area and event.type() == event.Type.KeyPress:
-            key = event.key()
-            # If it's one of our navigation keys, handle it in the dialog
-            if key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown):
-                self.logger.debug(self.caller, f"Intercepted navigation key from scroll area: {key}")
-                # Process the key in our keyPressEvent handler
-                self.keyPressEvent(event)
-                # Tell Qt we've handled this event
-                return True
-        # For other events, use standard event processing
-        return super().eventFilter(watched_object, event)
 
     # --- Public Method to Load New Data --- #
     def load_review_item(self, 
