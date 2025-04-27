@@ -160,17 +160,17 @@ To build the `FaceUsageReport`, we need two significant supporting components.
 
 *Focus: Implement the custom X-axis labels with avatars and names, and basic Y-axis.*
 
--   [ ] **Import Helper:** Import `make_round_pixmap` into `face_histogram.py`.
--   [ ] **FaceHistogram `paintEvent`:** Enhance the drawing logic:
-    -   [ ] Calculate bar width and spacing based on the number of faces and widget width.
-    -   [ ] Draw a simple Y-axis line with basic numerical labels (e.g., min, max count).
-    -   [ ] For each bar/face:
-        -   [ ] Call `make_round_pixmap` with the corresponding `face_image_path` to get the avatar `QPixmap`. Handle errors (use a placeholder pixmap if `make_round_pixmap` fails or the path is invalid).
-        -   [ ] Extract the face name (stem) from the path.
-        -   [ ] Draw the avatar below the X-axis baseline, centered under the bar position.
-        -   [ ] Draw the face name text below the avatar.
--   [ ] **Layout Adjustments:** Ensure enough vertical space is allocated in `FaceHistogram` (and potentially `FaceUsageReport`) to accommodate the X-axis labels (avatars + text) below the bars. Adjust `paintEvent` coordinates accordingly.
--   [ ] **Testing:** Verify the histogram now displays bars with corresponding circular avatars and face names below them. Check that Y-axis scaling looks reasonable. Test with a person having multiple faces. Test error handling for missing face files (placeholder avatar should appear).
+-   [x] **Import Helper:** Import `make_round_pixmap` into `face_histogram.py`.
+-   [x] **FaceHistogram `paintEvent`:** Enhance the drawing logic:
+    -   [x] Calculate bar width and spacing based on the number of faces and widget width.
+    -   [x] Draw a simple Y-axis line with basic numerical labels (e.g., min, max count).
+    -   [x] For each bar/face:
+        -   [x] Call `make_round_pixmap` with the corresponding `face_image_path` to get the avatar `QPixmap`. Handle errors (use a placeholder pixmap if `make_round_pixmap` fails or the path is invalid).
+        -   [x] Extract the face name (stem) from the path.
+        -   [x] Draw the avatar below the X-axis baseline, centered under the bar position.
+        -   [x] Draw the face name text below the avatar.
+-   [x] **Layout Adjustments:** Ensure enough vertical space is allocated in `FaceHistogram` (and potentially `FaceUsageReport`) to accommodate the X-axis labels (avatars + text) below the bars. Adjust `paintEvent` coordinates accordingly.
+-   [x] **Testing:** Verify the histogram now displays bars with corresponding circular avatars and face names below them. Check that Y-axis scaling looks reasonable. Test with a person having multiple faces. Test error handling for missing face files (placeholder avatar should appear).
 
 ### Milestone 4: Scrolling and Final Touches
 

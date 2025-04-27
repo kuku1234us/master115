@@ -43,12 +43,14 @@ class ResultImageDisplay(QWidget):
 
         self._original_pixmap: QPixmap | None = None
         self._scaled_pixmap: QPixmap | None = None
+        self._round_avatar_pixmap: QPixmap | None = None
 
         # Set size policy to expanding vertically, preferred horizontally
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
 
         self._setup_ui()
         self._load_image()
+        self._load_and_prepare_avatar()
 
     def _setup_ui(self):
         """Minimal UI setup, painting handled by paintEvent."""
@@ -76,6 +78,43 @@ class ResultImageDisplay(QWidget):
             self.logger.error(self.caller, f"Error loading image {self.image_path}: {e}", exc_info=True)
             self._original_pixmap = None
 
+    def _load_and_prepare_avatar(self):
+        """Finds, loads, and prepares the round avatar pixmap once."""
+        self._round_avatar_pixmap = None # Reset in case called multiple times
+
+        full_filename = self.image_path.stem
+        filename_parts = full_filename.split(" ")
+        person_name = filename_parts[0] if len(filename_parts) > 0 else None
+        face_stem = filename_parts[1] if len(filename_parts) > 1 else None
+
+        if not person_name or not face_stem:
+             self.logger.warn(self.caller, f"Could not parse person/face stem from filename: {full_filename}")
+             return # Cannot proceed
+
+        original_face_path_str = None
+        try:
+            # Find the path using PeopleManager
+            original_face_path_str = PeopleManager.instance().find_face_image_path(person_name, face_stem)
+        except Exception as find_err:
+            self.logger.error(self.caller, f"Error finding original face path for {person_name}/{face_stem}: {find_err}")
+            # Fall through, path is None
+
+        if original_face_path_str:
+            try:
+                # Load the pixmap
+                original_pixmap = QPixmap(original_face_path_str)
+                if original_pixmap.isNull():
+                     raise ValueError("Failed to load QPixmap from path")
+                # Make it round and store it
+                self._round_avatar_pixmap = make_round_pixmap(original_pixmap, OVERLAY_AVATAR_SIZE)
+                self.logger.debug(self.caller, f"Successfully loaded and prepared avatar for {person_name}/{face_stem}")
+            except Exception as e:
+                self.logger.debug(self.caller, f"Could not load/process avatar for {person_name}/{face_stem} from {original_face_path_str}: {e}")
+                self._round_avatar_pixmap = None # Ensure it's None on error
+        else:
+            # Path not found by PeopleManager
+            self.logger.debug(self.caller, f"Original face path not found for {person_name}/{face_stem}")
+
     def resizeEvent(self, event: QResizeEvent):
         """Handle widget resize event to rescale the pixmap and set fixed width."""
         super().resizeEvent(event)
@@ -89,8 +128,9 @@ class ResultImageDisplay(QWidget):
             self.setFixedWidth(self._scaled_pixmap.width())
         else:
             self._scaled_pixmap = None
-            # Use minimum width if no pixmap
-            self.setFixedWidth(self.minimumSize().width())
+            # Use minimum width if no pixmap - adjusted to use minimumSizeHint
+            min_width = self.minimumSizeHint().width()
+            self.setFixedWidth(min_width if min_width > 0 else 100) # Ensure positive width
 
         self.update() # Trigger repaint
 
@@ -150,66 +190,71 @@ class ResultImageDisplay(QWidget):
 
     def _draw_bottom_overlay(self, painter: QPainter, widget_rect: QRectF):
         """Draws the bottom overlay with avatar and face stem."""
-        # Extract Person Name and Face Stem from the result filename
+        # --- Simplified: Use pre-loaded avatar, only parse for text ---
         full_filename = self.image_path.stem
         filename_parts = full_filename.split(" ")
-        person_name = filename_parts[0] if len(filename_parts) > 0 else None
+        # person_name = filename_parts[0] if len(filename_parts) > 0 else None # Not needed here anymore
         face_stem = filename_parts[1] if len(filename_parts) > 1 else full_filename # Fallback to full stem
 
         # Setup colors and font
-        label_bg_color = QColor(0, 0, 0, 180)  # Black with 70% opacity
-        label_text_color = QColor(255, 255, 255, 255)  # White, fully opaque
+        label_bg_color = QColor(0, 0, 0, 180)
+        label_text_color = QColor(255, 255, 255, 255)
         placeholder_avatar_color = QColor("#555555")
-        
-        filename_font = QFont("Arial", 18) # Restore original size (18pt)
+
+        filename_font = QFont("Arial", 18)
         filename_font.setBold(True)
         painter.setFont(filename_font)
         font_metrics = painter.fontMetrics()
         text_width = font_metrics.horizontalAdvance(face_stem)
         text_height = font_metrics.height()
 
-        # Calculate total width needed for avatar, padding, text, padding
+        # Calculate sizes
         avatar_width_with_padding = OVERLAY_AVATAR_SIZE + OVERLAY_PADDING
         total_content_width = avatar_width_with_padding + text_width
-        total_overlay_width = total_content_width + 2 * OVERLAY_PADDING # Add padding on both sides
-        # Calculate overlay height
+        total_overlay_width = total_content_width + 2 * OVERLAY_PADDING
         overlay_height = max(OVERLAY_AVATAR_SIZE, text_height) + 2 * OVERLAY_PADDING
 
-        # Position at bottom center, moved up to avoid scrollbar AND shifted further up
-        scrollbar_clearance = 20  # Extra pixels to move up to clear the scrollbar
-        bg_rect_x = (widget_rect.width() - total_overlay_width) / 2 # Center horizontally
-        # Subtract overlay height, clearance, and an additional half overlay height
+        # Positioning
+        scrollbar_clearance = 20
+        bg_rect_x = (widget_rect.width() - total_overlay_width) / 2
         bg_rect_y = widget_rect.height() - 1.5*overlay_height - scrollbar_clearance
         bg_rect = QRectF(bg_rect_x, bg_rect_y, total_overlay_width, overlay_height)
 
         # Draw background
         painter.setBrush(QBrush(label_bg_color))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(bg_rect, 3, 3)  # Slightly rounded corners
+        painter.drawRoundedRect(bg_rect, 3, 3)
 
-        # --- Draw Avatar --- #
+        # --- Draw Avatar (from pre-loaded pixmap) --- #
         avatar_x = bg_rect.left() + OVERLAY_PADDING
-        avatar_y = bg_rect.top() + (bg_rect.height() - OVERLAY_AVATAR_SIZE) / 2 # Center vertically
-        
-        original_face_path = None
-        if person_name: # Only try if we could parse person name
-            try:
-                original_face_path = PeopleManager.instance().find_face_image_path(person_name, face_stem)
-            except Exception as find_err:
-                 self.logger.error(self.caller, f"Error finding original face path for {person_name}/{face_stem}: {find_err}")
-                 original_face_path = None # Ensure placeholder is drawn
+        avatar_y = bg_rect.top() + (bg_rect.height() - OVERLAY_AVATAR_SIZE) / 2
 
-        if original_face_path:
-            try:
-                original_pixmap = QPixmap(original_face_path)
-                if original_pixmap.isNull(): raise ValueError("Failed to load pixmap")
-                avatar_pixmap = make_round_pixmap(original_pixmap, OVERLAY_AVATAR_SIZE)
-                painter.drawPixmap(int(avatar_x), int(avatar_y), avatar_pixmap)
-            except Exception as e:
-                self.logger.debug(self.caller, f"Could not load avatar for {person_name}/{face_stem}: {e}")
-                original_face_path = None # Flag to draw placeholder
-        
-        if not original_face_path: # Draw placeholder if path not found or load failed
+        # <<< REMOVED PeopleManager lookup and subsequent loading logic >>>
+        # original_face_path = None
+        # if person_name: # Only try if we could parse person name
+        #     try:
+        #         original_face_path = PeopleManager.instance().find_face_image_path(person_name, face_stem)
+        #     except Exception as find_err:
+        #          self.logger.error(self.caller, f"Error finding original face path for {person_name}/{face_stem}: {find_err}")
+        #          original_face_path = None # Ensure placeholder is drawn
+        #
+        # if original_face_path:
+        #     try:
+        #         original_pixmap = QPixmap(original_face_path)
+        #         if original_pixmap.isNull(): raise ValueError("Failed to load pixmap")
+        #         avatar_pixmap = make_round_pixmap(original_pixmap, OVERLAY_AVATAR_SIZE)
+        #         painter.drawPixmap(int(avatar_x), int(avatar_y), avatar_pixmap)
+        #     except Exception as e:
+        #         self.logger.debug(self.caller, f"Could not load avatar for {person_name}/{face_stem}: {e}")
+        #         original_face_path = None # Flag to draw placeholder
+        #
+        # if not original_face_path: # Draw placeholder if path not found or load failed
+        #     # ... placeholder drawing logic ...
+
+        # <<< ADDED: Directly use self._round_avatar_pixmap >>>
+        if self._round_avatar_pixmap:
+             painter.drawPixmap(int(avatar_x), int(avatar_y), self._round_avatar_pixmap)
+        else: # Draw placeholder if pre-load failed or path not found
             painter.setBrush(placeholder_avatar_color)
             painter.setPen(Qt.PenStyle.NoPen)
             path = QPainterPath()
@@ -221,7 +266,7 @@ class ResultImageDisplay(QWidget):
         text_x = avatar_x + OVERLAY_AVATAR_SIZE + OVERLAY_PADDING
         text_y = bg_rect.top() + (bg_rect.height() - text_height) / 2 # Center vertically
         text_rect = QRectF(text_x, text_y, text_width, text_height)
-        
+
         painter.setPen(QPen(label_text_color))
         painter.setFont(filename_font) # Ensure font is set for text
         # Align text left and center vertically within its calculated area
@@ -232,8 +277,9 @@ class ResultImageDisplay(QWidget):
         if self._scaled_pixmap:
             return self._scaled_pixmap.size()
         elif self._original_pixmap:
-            # Provide hint based on original aspect ratio scaled to minimum height
-            min_height = self.minimumSize().height()
+            # Use minimumSizeHint for consistent fallback sizing
+            min_height = self.minimumSizeHint().height()
+            min_height = max(min_height, 150) # Ensure a reasonable minimum
             aspect_ratio = self._original_pixmap.width() / self._original_pixmap.height() if self._original_pixmap.height() > 0 else 1
             return QSize(int(min_height * aspect_ratio), min_height)
         else:

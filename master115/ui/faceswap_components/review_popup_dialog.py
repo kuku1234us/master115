@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QHBoxLayout,
     QApplication, QDialogButtonBox, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QSize, QByteArray
+from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QSize, QByteArray, QTimer
 from PyQt6.QtGui import QKeyEvent, QResizeEvent
 
 # Local Imports
@@ -26,9 +26,8 @@ class ReviewPopupDialog(QDialog):
     # Signal requesting navigation to the previous item in the main list
     request_previous_item = pyqtSignal()
     # Signal indicating review is complete for the current item, 
-    # providing the original source path to identify it for removal.
     # DEPRECATED review_complete = pyqtSignal(str)
-    # Signal with review decision data: original_source_path, approved_paths, unapproved_paths
+    # Signal with review decision data: person_name, source_stem, approved_paths, unapproved_paths
     review_processed = pyqtSignal(str, str, list, list)
 
     # --- Add settings key --- #
@@ -37,16 +36,16 @@ class ReviewPopupDialog(QDialog):
     # Update constructor signature
     def __init__(self, 
                  person_name: str,
-                 original_source_path: str,
+                 source_stem: str, # Changed from original_source_path
                  result_image_paths: List[str],
-                 ai_root_dir_str: str, # Added AI root for potential future use
+                 ai_root_dir_str: str, # Keep for now, might be useful later
                  parent=None):
         """
         Initialize the dialog.
 
         Args:
             person_name (str): Name of the person reviewed.
-            original_source_path (str): Path to the original source image.
+            source_stem (str): Stem of the original source image filename.
             result_image_paths (List[str]): List of paths to the generated result images.
             ai_root_dir_str (str): The configured AI Root directory path.
             parent (QWidget, optional): Parent widget. Defaults to None.
@@ -58,10 +57,11 @@ class ReviewPopupDialog(QDialog):
 
         # Store initial data directly from arguments
         self.person_name = person_name
-        self.original_source_path = original_source_path
+        self.source_stem = source_stem # Store stem
+        # self.original_source_path = original_source_path # Removed
         self.result_paths = result_image_paths or []
         self.ai_root_dir = Path(ai_root_dir_str) # Store as Path object
-        self.source_filename: str = "Unknown Source"
+        # self.source_filename: str = "Unknown Source" # No longer needed directly
         self.result_displays: List[ResultImageDisplay] = []
 
         self.setWindowTitle("Face Swap Review") # Generic initial title
@@ -123,70 +123,61 @@ class ReviewPopupDialog(QDialog):
 
     def _update_display_data(self):
         """Updates the dialog's title and populates images based on current data."""
-        self.logger.debug(self.caller, f"Updating display for: {self.original_source_path}")
+        self.logger.debug(self.caller, f"Updating display for: {self.source_stem}")
         
-        # Update source filename from path
-        if self.original_source_path:
-            try:
-                self.source_filename = Path(self.original_source_path).name
-            except Exception as e:
-                self.logger.warn(f"Could not get filename from source path '{self.original_source_path}': {e}")
-                self.source_filename = "Unknown Source"
-        else:
-            self.source_filename = "Unknown Source"
-            
         # Update Title Label
-        self.title_label.setText(f"Review: {self.person_name} / {self.source_filename}")
+        self.title_label.setText(f"Review: {self.person_name} / {self.source_stem}")
 
         self._populate_images()
 
     def _populate_images(self):
         """Creates ResultImageDisplay widgets and adds them to the layout."""
-        # Clear existing widgets
+        self.logger.debug(self.caller, f"Populating images for {self.source_stem}")
+        # Clear existing widgets first
         self.result_displays = []
         while self.image_layout.count():
-             item = self.image_layout.takeAt(0)
-             widget = item.widget()
-             if widget:
-                 widget.deleteLater()
+            item = self.image_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
 
         if not self.result_paths:
-             error_label = QLabel("No result images found for this item.")
-             error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-             self.image_layout.addWidget(error_label)
-             return
+            self.logger.warn(self.caller, "No result paths found, displaying message.")
+            error_label = QLabel("No result images found for this item.")
+            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.image_layout.addWidget(error_label)
+            # Ensure container size is updated even when empty
+            self._update_image_container_size()
+            return
 
+        # Create and add new widgets
         for index, image_path_str in enumerate(self.result_paths):
-             try:
-                 image_path = Path(image_path_str)
-                 if image_path.is_file():
-                     # Create and add the display widget
-                     display_widget = ResultImageDisplay(image_path, index, parent=self.image_container_widget)
-                     self.image_layout.addWidget(display_widget)
-                     self.result_displays.append(display_widget)
-                 else:
-                     self.logger.warn(self.caller, f"Result image file not found: {image_path_str}")
-                     # Add placeholder for missing files
-                     placeholder = QLabel(f"Image {index+1}\nNot Found")
-                     placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                     placeholder.setWordWrap(True)
-                     placeholder.setFrameShape(QWidget.Shape.Box)
-                     placeholder.setStyleSheet("border: 1px dashed gray; color: gray; min-width: 150px; min-height: 150px;")
-                     self.image_layout.addWidget(placeholder)
-             except Exception as e:
-                 self.logger.error(self.caller, f"Error creating display widget for {image_path_str}: {e}", exc_info=True)
-                 # Add error placeholder
-                 placeholder = QLabel(f"Image {index+1}\nLoad Error")
-                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                 placeholder.setWordWrap(True)
-                 placeholder.setFrameShape(QWidget.Shape.Box)
-                 placeholder.setStyleSheet("border: 1px dashed red; color: red; min-width: 150px; min-height: 150px;")
-                 self.image_layout.addWidget(placeholder)
+            try:
+                image_path = Path(image_path_str)
+                if image_path.is_file():
+                    display_widget = ResultImageDisplay(image_path, index, parent=self.image_container_widget)
+                    self.image_layout.addWidget(display_widget)
+                    self.result_displays.append(display_widget)
+                else:
+                    self.logger.warn(self.caller, f"Result image file not found: {image_path_str}")
+                    placeholder = QLabel(f"Image {index+1}\nNot Found")
+                    placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    placeholder.setWordWrap(True)
+                    placeholder.setFrameShape(QWidget.Shape.Box)
+                    placeholder.setStyleSheet("border: 1px dashed gray; color: gray; min-width: 150px; min-height: 150px;")
+                    self.image_layout.addWidget(placeholder)
+            except Exception as e:
+                self.logger.error(self.caller, f"Error creating display widget for {image_path_str}: {e}", exc_info=True)
+                placeholder = QLabel(f"Image {index+1}\nLoad Error")
+                placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                placeholder.setWordWrap(True)
+                placeholder.setFrameShape(QWidget.Shape.Box)
+                placeholder.setStyleSheet("border: 1px dashed red; color: red; min-width: 150px; min-height: 150px;")
+                self.image_layout.addWidget(placeholder)
 
-        # Explicitly activate the layout to force recalculation after adding widgets
-        self.image_layout.activate()
-        # Trigger size update after populating
+        # Trigger size update *after* adding all widgets
         self._update_image_container_size()
+        self.logger.debug(self.caller, f"Finished populating {len(self.result_displays)} images.")
 
     def resizeEvent(self, event: QResizeEvent):
         """Handle widget resize event by recalculating image container size."""
@@ -196,63 +187,98 @@ class ReviewPopupDialog(QDialog):
     def showEvent(self, event):
         """Ensure content size is updated when dialog is shown (after potential geometry restore)."""
         super().showEvent(event)
-        # Update content size after the dialog is shown and geometry is set
-        self._update_image_container_size()
+        # Delay initial size update slightly to ensure viewport is ready
+        QTimer.singleShot(0, self._update_image_container_size)
 
     def _update_image_container_size(self):
-        """Calculates and sets the size of the image container based on viewport height."""
-        # 1. Give the container the full viewport height
+        """
+        Sets the fixed height of child image displays and the container,
+        then schedules the width calculation.
+        """
+        # 1. Get available height
         viewport_height = self.scroll_area.viewport().height()
-        # Prevent setting zero height if viewport isn't ready or no displays
-        if viewport_height <= 0 or not self.result_displays:
-            # Set a default minimum size for the container if needed
-            # self.image_container_widget.setMinimumSize(100, 100) 
+
+        # 2. Handle empty/invalid state
+        if viewport_height <= 0:
+            self.logger.debug(self.caller, "_update_image_container_size: Skipping update (viewport <= 0).")
+            return
+        # Also handle if called before result_displays exists (though unlikely now)
+        if not hasattr(self, 'result_displays'):
+             self.logger.debug(self.caller, "_update_image_container_size: Skipping update (result_displays not initialized).")
+             return
+
+        self.logger.debug(self.caller, f"_update_image_container_size: Setting heights to {viewport_height}px")
+
+        # 3. Set fixed height on all child image displays
+        for widget in self.result_displays:
+            if widget: # Check if widget is valid
+                widget.setFixedHeight(viewport_height)
+            else:
+                # This shouldn't happen if _populate_images clears correctly
+                self.logger.warn(self.caller, "Encountered an invalid (None) widget during height setting.")
+
+        # 4. Set the container's height only.
+        self.image_container_widget.setFixedHeight(viewport_height)
+
+        # 5. Schedule the width calculation to run after events are processed
+        QTimer.singleShot(0, self._calculate_and_set_container_width)
+
+    def _calculate_and_set_container_width(self):
+        """
+        Calculates the required width based on child widgets and sets
+        the fixed width of the image container. Called via QTimer.singleShot.
+        """
+        # Check if viewport height is still valid (might have changed)
+        viewport_height = self.scroll_area.viewport().height()
+        if viewport_height <= 0 or not hasattr(self, 'result_displays') or not self.result_displays:
+            # If no valid widgets or height, maybe reset width or do nothing?
+            # Setting minimum width prevents complete collapse if called unexpectedly
+            self.image_container_widget.setMinimumWidth(10)
+            self.logger.debug(self.caller, "_calculate_and_set_container_width: Skipping width calculation (invalid state).")
             return
 
-        # Calculate dimensions for all ResultImageDisplay widgets and container
+        self.logger.debug(self.caller, "_calculate_and_set_container_width: Calculating total width...")
+
         total_width = 0
         left_margin, _, right_margin, _ = self.image_layout.getContentsMargins()
+        valid_widgets = [w for w in self.result_displays if w]
 
-        # First pass: Set fixed height on all widgets
-        # This might trigger individual resizeEvents in ResultImageDisplay
-        for w in self.result_displays:
-            w.setFixedHeight(viewport_height)
-
-        # Give Qt a chance to process the height changes and potential resizes
-        QApplication.processEvents()
-
-        # Second pass: Calculate and set the total width based on actual widget sizes
-        for w in self.result_displays:
+        for i, w in enumerate(valid_widgets):
+            # Query width *after* event loop has likely processed resize
             display_width = w.width()
-            # Use sizeHint as a fallback if width is still not properly calculated
+            # Fallback logic (important if width() is still unreliable)
             if display_width <= 10:
                 hint_width = w.sizeHint().width()
-                if hint_width > 10: # Use hint if reasonable
+                if hint_width > 10:
+                    self.logger.debug(self.caller, f"Widget {i}: Using sizeHint width {hint_width}")
                     display_width = hint_width
-                elif w._original_pixmap and w._original_pixmap.height() > 0:
+                elif hasattr(w, '_original_pixmap') and w._original_pixmap and w._original_pixmap.height() > 0:
                     aspect_ratio = w._original_pixmap.width() / w._original_pixmap.height()
-                    display_width = int(viewport_height * aspect_ratio)
+                    calculated_width = int(viewport_height * aspect_ratio)
+                    # Ensure minimum width for very tall/thin images
+                    display_width = max(calculated_width, 50)
+                    self.logger.debug(self.caller, f"Widget {i}: Calculating width from aspect ratio: {display_width}")
                 else:
-                    display_width = viewport_height # Default fallback
-            
+                    display_width = max(viewport_height // 2, 100) # Fallback (wider than tall)
+                    self.logger.debug(self.caller, f"Widget {i}: Falling back to calculated width {display_width}")
+
             total_width += display_width
 
         # Add layout spacing and margins
         spacing = self.image_layout.spacing()
         if spacing == -1: spacing = self.style().layoutSpacing(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding, Qt.Orientation.Horizontal)
-        if len(self.result_displays) > 1:
-             total_width += spacing * (len(self.result_displays) - 1)
-             
+        if len(valid_widgets) > 1:
+            total_width += spacing * (len(valid_widgets) - 1)
         total_width += left_margin + right_margin
 
-        # Set the container dimensions
-        self.image_container_widget.setFixedHeight(viewport_height)
-        # Add a small buffer to width just in case? Sometimes needed.
-        self.image_container_widget.setFixedWidth(int(total_width * 1.01)) 
+        # Set the container's calculated width (add small buffer?)
+        # final_width = int(total_width * 1.01) # Optional buffer
+        final_width = int(total_width)
+        # Ensure a minimum width if calculation goes wrong
+        final_width = max(final_width, 100)
+        self.image_container_widget.setFixedWidth(final_width)
 
-        # Force layout update seems redundant if we set fixed size
-        # self.image_layout.activate()
-        self.logger.debug(self.caller, f"Set container width to {int(total_width * 1.01)}px for {len(self.result_displays)} images based on viewport height {viewport_height}")
+        self.logger.debug(self.caller, f"_calculate_and_set_container_width: Set container width to {final_width}px for {len(valid_widgets)} images.")
 
     # --- Event Handling --- #
 
@@ -320,7 +346,6 @@ class ReviewPopupDialog(QDialog):
 
         if items_hidden:
             # Update layout if items were hidden
-            QApplication.processEvents() # Allow visibility changes to process
             self._update_image_container_size() # Recalculate container size
             # --- Re-number visible items --- #
             visible_widgets = [w for w in self.result_displays if w.isVisible()]
@@ -353,7 +378,6 @@ class ReviewPopupDialog(QDialog):
 
         if items_processed: # Only update layout etc. if items were actually hidden
             # Update layout if items were hidden
-            QApplication.processEvents() # Allow visibility changes to process
             self._update_image_container_size() # Recalculate container size
 
             # --- Re-number remaining visible items --- #
@@ -392,11 +416,11 @@ class ReviewPopupDialog(QDialog):
         self.logger.debug(self.caller, f"Approved: {len(approved_result_paths)}, Unapproved: {len(unapproved_result_paths)}")
 
         # 2. Emit signal with decisions
-        if self.original_source_path:
+        if self.source_stem:
             # Emit the signal with the original path and lists of result paths
             self.review_processed.emit(
                 self.person_name,
-                self.original_source_path,
+                self.source_stem,
                 approved_result_paths,
                 unapproved_result_paths
             )
@@ -404,7 +428,7 @@ class ReviewPopupDialog(QDialog):
             # self.accept() 
             # ---------------------------------------------------------- #
         else:
-            self.logger.error(self.caller, "Cannot process review, original_source_path is missing!")
+            self.logger.error(self.caller, "Cannot process review, source_stem is missing!")
             # Optionally show error to user
             self.reject() # Close dialog on error
 
@@ -432,14 +456,14 @@ class ReviewPopupDialog(QDialog):
     # --- Public Method to Load New Data --- #
     def load_review_item(self, 
                          person_name: str, 
-                         original_source_path: str, 
+                         source_stem: str, 
                          result_image_paths: List[str]):
         """Updates the dialog with data for a new review item."""
-        self.logger.debug(self.caller, f"****************** Loading new review item: {person_name} / {Path(original_source_path).name}")
+        self.logger.debug(self.caller, f"****************** Loading new review item: {person_name} / {source_stem}")
         
         # Update internal data storage
         self.person_name = person_name
-        self.original_source_path = original_source_path
+        self.source_stem = source_stem # Store stem
         self.result_paths = result_image_paths or []
         
         # Update the UI elements based on the new data

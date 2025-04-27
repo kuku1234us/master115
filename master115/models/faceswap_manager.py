@@ -364,14 +364,10 @@ class FaceSwapManager(QObject):
 
                     # --- Check 1: Person completed for this source ---
                     if completed_person_faces >= total_person_faces:
-                        self.logger.info(self.caller, f"All {total_person_faces} faces for {person_name} completed on source: {source_path.name}. Adding to review.")
-                        # Add this person/source pair to review (will NOT move file)
-                        ReviewManager.instance().add_person_source_review(
-                            person_name=person_name,
-                            original_source_path=source_path,
-                            result_paths=person_progress['result_paths'] # Pass only this person's results
-                        )
-
+                        self.logger.info(self.caller, f"All {total_person_faces} faces for {person_name} completed on source: {source_path.name}.")
+                        # REMOVED: Call to ReviewManager.add_person_source_review()
+                        # ReviewManager now discovers items by scanning Temp directory.
+                        
                         # Update overall source completion tracker
                         if source_path in self._source_overall_completion:
                             self._source_overall_completion[source_path].add(person_name)
@@ -386,11 +382,30 @@ class FaceSwapManager(QObject):
                             log_msg_suffix = "Moving source file." if self._current_run_move_source else "Skipping source file move (toggle disabled)."
                             self.logger.info(self.caller, f"Source {source_path.name} is now complete for ALL selected persons ({len(self._current_run_selected_persons)}). {log_msg_suffix}")
                             
-                            # Conditionally move the source file based on the setting for this run
+                            # --- Direct Source File Move Logic --- #
                             if self._current_run_move_source:
-                                ReviewManager.instance().mark_source_completed_and_move(
-                                    original_source_path=source_path
-                                )
+                                ai_root_path = self.people_manager._get_ai_root() # Use PeopleManager's helper
+                                if ai_root_path:
+                                    try:
+                                        completed_dir = ai_root_path / "SourceImages" / "Completed"
+                                        completed_dir.mkdir(parents=True, exist_ok=True)
+                                        dest_path = completed_dir / source_path.name
+                                        if source_path.exists(): # Check if source still exists
+                                             self.logger.info(self.caller, f"Moving completed source '{source_path.name}' to Completed/ folder.")
+                                             shutil.move(str(source_path), str(dest_path))
+                                             self.logger.debug(self.caller, f"Successfully moved {source_path.name} to {dest_path}")
+                                        else:
+                                             self.logger.warn(self.caller, f"Source file {source_path.name} not found for move, perhaps already moved?")
+                                    except OSError as e:
+                                         self.logger.error(self.caller, f"Error moving source file {source_path.name} to Completed: {e}", exc_info=True)
+                                    except Exception as e:
+                                         self.logger.error(self.caller, f"Unexpected error moving source file {source_path.name}: {e}", exc_info=True)
+                                else:
+                                    self.logger.error(self.caller, "Cannot move source file, failed to get valid AI Root path.")
+                            # ------------------------------------- #
+                                
+                            # REMOVED: Call to ReviewManager.mark_source_completed_and_move()
+                            
                             # --- Remove completed source from tracking immediately --- #
                             if source_path in self._person_source_progress:
                                 del self._person_source_progress[source_path]
