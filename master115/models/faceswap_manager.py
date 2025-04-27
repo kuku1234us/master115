@@ -25,11 +25,11 @@ class FaceSwapManager(QObject):
     # General log messages for the UI status log
     log_message = pyqtSignal(str)
     # Signals process state changes for UI updates (e.g., button states)
-    process_started = pyqtSignal()
+    process_started = pyqtSignal(dict) # Emits {person_name: total_workers}
     process_finished = pyqtSignal() # Emitted on normal completion or graceful stop
     process_killed = pyqtSignal() # Emitted after a forceful kill
-    # Optional: Signal for individual task updates if needed by UI beyond logging
-    # task_update = pyqtSignal(str) # Example: could carry simple status strings
+    # Signal for individual person progress updates
+    person_progress_updated = pyqtSignal(str, int, int) # person_name, completed, total
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -47,7 +47,15 @@ class FaceSwapManager(QObject):
         self._pending_workers: List[FaceStateWorker] = []
         self._pending_threads: List[QThread] = []
         # ----------------------------------- #
+        # --- Active Worker ID Tracking --- #
+        self._active_worker_ids: Dict[str, FaceStateWorker] = {} # Map worker_id -> worker instance
+        # ------------------------------- #
         
+        # --- Worker Progress Tracking --- #
+        self._person_worker_totals: Dict[str, int] = {}
+        self._person_completed_workers: Dict[str, int] = {}
+        # -------------------------------- #
+
         # --- NEW Progress Tracking Structures --- #
         self._progress_lock = threading.Lock()
         # Tracks completion per (source, person) pair
@@ -71,6 +79,17 @@ class FaceSwapManager(QObject):
         return self._is_running
 
     # --- Public Methods --- #
+
+    def get_active_worker_ids_for_person(self, person_name: str) -> List[str]:
+        """Returns a list of active worker IDs for a given person name."""
+        # Worker IDs are in the format 'PersonName-FaceStem'
+        ids = []
+        with self._progress_lock: # Use the same lock for accessing active workers
+            for worker_id in self._active_worker_ids.keys():
+                # Check if the worker ID starts with the requested person's name and a hyphen
+                if worker_id.startswith(f"{person_name}-"):
+                    ids.append(worker_id)
+        return sorted(ids) # Return sorted for consistent menu order
 
     def start_process(self, selected_person_names: List[str], run_headless: bool = True, move_source_file: bool = True):
         """Starts the face swap automation process."""
@@ -155,7 +174,9 @@ class FaceSwapManager(QObject):
         # --- Clear pending lists as well --- #
         self._pending_workers.clear()
         self._pending_threads.clear()
-        # --------------------------------- #
+        # --- Clear active worker IDs --- #
+        self._active_worker_ids.clear()
+        # ------------------------------- #
         
         # --- Initialize NEW progress tracking --- #
         with self._progress_lock:
@@ -177,7 +198,11 @@ class FaceSwapManager(QObject):
                             'completed_faces': set(), # Store completed face filenames for this person/source
                             'result_paths': set()     # Store paths generated for this person/source
                         }
-        # ------------------------------------- #
+                    # --- Store Worker Totals --- #
+                    if person.faces: # Only store if person has faces
+                        self._person_worker_totals[person.name] = len(person.faces)
+                        self._person_completed_workers[person.name] = 0 # Initialize completed count
+                    # ------------------------- #
 
         self.logger.info(self.caller, f"Preparing to start workers. Persons: {len(valid_selected_persons)}, Sources: {len(all_source_images)}")
         total_workers_to_start = sum(len(person.faces) for person in valid_selected_persons)
@@ -209,7 +234,8 @@ class FaceSwapManager(QObject):
 
         # Check if any workers actually started
         if self._active_worker_count > 0:
-            self.process_started.emit() # Signal UI that process has started
+            # Emit totals when starting
+            self.process_started[dict].emit(dict(self._person_worker_totals))
             self.logger.info(self.caller, f"Successfully started initial {self._active_worker_count} worker threads.")
             self.log_message.emit(f"Automation process running with {self._active_worker_count} active workers (limit {MAX_CONCURRENT_WORKERS}).")
         else:
@@ -365,11 +391,6 @@ class FaceSwapManager(QObject):
                                 ReviewManager.instance().mark_source_completed_and_move(
                                     original_source_path=source_path
                                 )
-                            else:
-                                # Still mark as complete in ReviewManager's JSON, but don't move file
-                                ReviewManager.instance().mark_source_completed_in_json(
-                                    original_source_path=source_path
-                                )
                             # --- Remove completed source from tracking immediately --- #
                             if source_path in self._person_source_progress:
                                 del self._person_source_progress[source_path]
@@ -443,11 +464,11 @@ class FaceSwapManager(QObject):
         # --- End of moved logic ---
 
     @pyqtSlot()
-    def _on_worker_finished(self):
-        """Invoked each time a worker emits `finished()`."""
+    def _on_any_worker_finished(self):
+        """Invoked each time a worker emits `finished()`. Handles overall count and process end."""
         if not self._is_running:
             # Safety check: Should not happen if logic is correct
-            self.logger.debug(self.caller, "_on_worker_finished called while not running. Ignoring.")
+            self.logger.debug(self.caller, "_on_any_worker_finished called while not running. Ignoring.")
             return
 
         self._active_worker_count -= 1
@@ -463,27 +484,27 @@ class FaceSwapManager(QObject):
             # Use the lock here just to be safe when checking pending list
             with self._progress_lock:
                  all_pending_started = not self._pending_workers
+                 stop_requested = self._stop_event and self._stop_event.is_set()
                  
-            if all_pending_started:
+            # Either all workers started OR stop was requested and all active workers finished
+            if all_pending_started or stop_requested:
                 self.logger.info(self.caller, "All worker objects finished; shutting down threads.")
 
                 # ---- FIX: Implement correct Quit -> Wait -> DeleteLater sequence ----
                 # 1) Tell every thread to quit its event-loop
                 self.logger.debug(self.caller, "Requesting all threads to quit...")
                 for thread in self._worker_threads:
-                    if thread.isRunning():
-                        thread.quit()             # Ask the event loop to exit
+                    thread.quit()             # Ask the event loop to exit
 
                 # 2) Wait until *all* have actually terminated
                 self.logger.debug(self.caller, "Waiting for all threads to terminate...")
                 all_terminated = True # Flag to track if all waited successfully
                 for thread in self._worker_threads:
-                    if thread.isRunning():
-                        if not thread.wait(5000): # Wait up to 5 seconds
-                            self.logger.warn(self.caller, f"Thread {thread} did not finish within the timeout after quit signal.")
-                            all_terminated = False
-                        else: # Debug log if needed
-                             self.logger.debug(self.caller, f"Thread {thread} finished cleanly after wait.")
+                    if not thread.wait(5000): # Wait up to 5 seconds
+                        self.logger.warn(self.caller, f"Thread {thread} did not finish within the timeout after quit signal.")
+                        all_terminated = False
+                    else: # Debug log if needed
+                        self.logger.debug(self.caller, f"Thread {thread} finished cleanly after wait.")
                     # Schedule for deletion regardless of clean termination within wait
                     thread.deleteLater()
                 # -------------------------------------------------------------------- #
@@ -495,11 +516,11 @@ class FaceSwapManager(QObject):
 
 
                 # Log final status and cleanup state *after* threads are done
-                final_message = "Process stopped gracefully." if self._stop_event and self._stop_event.is_set() else "All tasks completed."
+                final_message = "Process stopped gracefully." if stop_requested else "All tasks completed."
                 # Check if any tasks are still pending (shouldn't be if count is 0, but safety check)
                 with self._progress_lock:
                     remaining_tasks = len(self._person_source_progress)
-                if remaining_tasks > 0 and not (self._stop_event and self._stop_event.is_set()):
+                if remaining_tasks > 0 and not stop_requested:
                      final_message += f" (Warning: {remaining_tasks} source images did not fully complete)."
                      self.logger.warn(self.caller, f"Process finished, but {remaining_tasks} source images remain in progress tracker.")
 
@@ -510,20 +531,54 @@ class FaceSwapManager(QObject):
 
         # If workers > 0, just return (no cleanup yet)
 
+    @pyqtSlot(str)
+    def _on_specific_worker_finished(self, person_name: str):
+        """Slot connected to the worker's finished(person_name) signal."""
+        sender_worker = self.sender()
+        worker_id = None
+        # Find the worker_id associated with the sender
+        with self._progress_lock: # Protect access to _active_worker_ids
+            for w_id, worker in self._active_worker_ids.items():
+                if worker is sender_worker:
+                    worker_id = w_id
+                    break
+            # Remove the worker ID if found
+            if worker_id and worker_id in self._active_worker_ids:
+                del self._active_worker_ids[worker_id]
+                self.logger.debug(self.caller, f"Removed finished worker ID: {worker_id}")
+            else:
+                 self.logger.warn(self.caller, f"Finished worker (Person: {person_name}, Sender: {sender_worker}) not found in active IDs.")
+
+        with self._progress_lock: # Separate lock context for clarity
+            if person_name in self._person_completed_workers:
+                self._person_completed_workers[person_name] += 1
+                completed = self._person_completed_workers[person_name]
+                total = self._person_worker_totals.get(person_name, 0) # Get total, default 0
+                self.logger.debug(self.caller, f"Worker finished for {person_name}. Progress: {completed}/{total}")
+                # Emit progress update signal
+                self.person_progress_updated.emit(person_name, completed, total)
+            else:
+                 self.logger.warn(self.caller, f"Received worker finished signal for untracked/already cleared person: {person_name}")
+        # Note: Do not call _on_any_worker_finished here, it's connected separately
+
     def _cleanup_after_stop(self):
-        """Cleans up internal state after process stops or is killed."""
+        """Resets internal state after the process has fully stopped."""
+        self.logger.info(self.caller, "Cleaning up manager state.")
         self._is_running = False
         self._workers.clear()
-        self._worker_threads.clear() # Should be empty if using deleteLater correctly
+        self._worker_threads.clear()
+        self._pending_workers.clear()
+        self._pending_threads.clear()
+        self._active_worker_ids.clear() # Clear active worker IDs
         self._active_worker_count = 0
         self._stop_event = None
-        # --- Clear progress tracker on cleanup --- #
+        # Reset progress tracking
         with self._progress_lock:
+            self._person_worker_totals.clear()
+            self._person_completed_workers.clear()
             self._person_source_progress.clear()
             self._source_overall_completion.clear()
             self._current_run_selected_persons.clear()
-        # ---------------------------------------- #
-        self.logger.info(self.caller, "Manager internal state reset.") 
 
     def _update_pending_review_json(self, original_path: Path, completed_path: Path, result_paths: Set[str]):
         """
@@ -537,32 +592,36 @@ class FaceSwapManager(QObject):
 
     # --- New Helper Method --- #
     def _start_pending_workers(self):
-        """Starts pending workers up to the concurrency limit."""
-        if not self._is_running: # Don't start if process was stopped
-             return
-             
-        with self._progress_lock: # Use existing lock for modifying worker lists/counts
-             while self._active_worker_count < MAX_CONCURRENT_WORKERS and self._pending_workers:
+        """Starts workers from the pending list up to the concurrency limit."""
+        with self._progress_lock: # Protect access to worker lists and count
+            while self._active_worker_count < MAX_CONCURRENT_WORKERS and self._pending_workers:
                 worker = self._pending_workers.pop(0)
                 thread = self._pending_threads.pop(0)
 
-                # Move worker to thread NOW
+                worker_id = worker._worker_id() # Get the ID for tracking
+
+                # Move worker to thread **before** connecting signals that rely on thread context
                 worker.moveToThread(thread)
 
-                # Connect signals (same as before)
+                # Connect signals
                 worker.log_message.connect(self.log_message)
                 worker.task_complete.connect(self._on_task_complete)
                 worker.task_failed.connect(self._on_task_failed)
-                worker.finished.connect(self._on_worker_finished)
-                thread.started.connect(worker.run)
+                # Connect to the specific finished signal that includes person_name
+                worker.finished.connect(self._on_specific_worker_finished)
+                # Connect generic finished for thread cleanup and overall count
+                worker.finished.connect(self._on_any_worker_finished)
                 worker.finished.connect(thread.quit)
+                # Schedule deletion of worker
                 thread.finished.connect(worker.deleteLater)
+                # Start worker's run method when thread starts
+                thread.started.connect(worker.run)
 
-                # Add to *active* tracking lists
+                # Store references
                 self._workers.append(worker)
                 self._worker_threads.append(thread)
-
-                thread.start()
+                self._active_worker_ids[worker_id] = worker # Add to active dict
                 self._active_worker_count += 1
-                self.logger.debug(self.caller, f"Started pending worker: {worker.caller}. Active: {self._active_worker_count}")
+
+                thread.start() # Start the thread
     # ------------------------ # 

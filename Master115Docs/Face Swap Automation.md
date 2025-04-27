@@ -76,6 +76,14 @@ This page provides controls and status monitoring for the automation process.
         -   **Interaction:** Acts as a toggle button. Clicking it toggles its state between "selected" (will be processed) and "deselected" (will be skipped).
         -   **State Indication:** Clearly indicates the selected/deselected state (e.g., background color change, border, checkmark overlay).
         -   **Data:** Stores the person's name and the list of face image paths associated with them.
+        -   **Layout & Design:** The avatar and name label are arranged horizontally. Visual feedback indicates its state (selected/deselected) by changing the background color and border. The widget has a fixed height and minimum width for uniformity.
+        -   **Progress Overlay (During Automation):**
+            -   **Appearance:** When the automation process is running, and this specific person was selected for processing, a text overlay appears on the badge (e.g., centered or near the name).
+            -   **Content:** The overlay displays progress in the format "X/Y", where:
+                -   `Y` is the total number of face images (and thus, worker threads) associated with this person for the current run.
+                -   `X` is the number of those worker threads that have completed their processing for all source images.
+            -   **Visibility:** The overlay is only visible while the automation is active and only on badges corresponding to selected persons. It disappears once the process finishes or is stopped/killed.
+        -   **Interaction:** A simple click toggles the selected state. It needs to store its current state (selected/deselected). The progress overlay does not affect clickability.
 
 -   **Control Buttons:**
     -   **Layout:** Arranged horizontally (`QHBoxLayout`).
@@ -139,14 +147,19 @@ This page allows the user to approve or reject the generated face swap results.
     -   **Hotkeys (Dialog must have focus):**
         -   **Up Arrow / Page Up:** Closes the current popup, selects the *previous* item in the Result Review Queue, and opens the Review Popup for that previous item. Wraps around if at the top.
         -   **Down Arrow / Page Down:** Closes the current popup, selects the *next* item in the Result Review Queue, and opens the Review Popup for that next item. Wraps around if at the bottom.
-        -   **0-9:** Toggles the "checked" state of the corresponding labeled image (1-9, 0 potentially for the 10th if needed). Updates the visual checkmark overlay.
+        -   **0-9:** Toggles the "checked" state of the *currently visible* image corresponding to the digit (1-9, 0 potentially for the 10th if needed, based on the dynamic numbering after using '-'). Updates the visual checkmark overlay.
+        -   **- (Minus key):**
+            - Finds all *visible* images that are currently "checked".
+            - Unchecks (deselects) each of these found images.
+            - Hides these images from the dialog view.
+            - Re-numbers the overlays of the remaining visible images sequentially (1, 2, 3,...).
         -   **+ (Plus key):**
-            -   Identifies all "checked" images in the current view.
-            -   Moves each checked image file from `<AI Root Directory>/Temp/` to `<AI Root Directory>/FaceSwapped/`.
-            -   Deletes all "unchecked" image files for this group from `<AI Root Directory>/Temp/`.
-            -   Removes the corresponding thumbnail item from the Result Review Queue UI.
-            -   Closes the current popup.
-            -   Automatically selects the *next* item in the Result Review Queue (if any) and opens its Review Popup. If it was the last item, simply closes the popup.
+            - Identifies all *currently visible* images that are "checked".
+            - Moves each checked image file from `<AI Root Directory>/Temp/` to `<AI Root Directory>/FaceSwapped/`.
+            - Deletes all *currently visible* images that are "unchecked" for this group from `<AI Root Directory>/Temp/`. (Note: Previously hidden images are not affected by this action).
+            - Removes the corresponding thumbnail item from the Result Review Queue UI.
+            - Closes the current popup.
+            - Automatically selects the *next* item in the Result Review Queue (if any) and opens its Review Popup. If it was the last item, simply closes the popup.
 
 ## 4. UI Components
 
@@ -158,9 +171,10 @@ This section details the reusable custom UI components that will be created in t
 -   **Composition:**
     -   It will likely inherit from `QWidget` or `QFrame` to serve as a container.
     -   A `QVBoxLayout` could arrange the elements vertically.
+    -   A `QHBoxLayout` is used to arrange the avatar and name label horizontally.
     -   A `QLabel` will be used to display the person's name (derived from the folder name). Clarity and readability are key here.
     -   Another `QLabel` will display the circular avatar thumbnail. Using a `QLabel` is convenient for setting pixmaps (`QPixmap`). We'll need logic to load the *first* image found in the person's folder, scale it appropriately (e.g., 64x64 pixels), and potentially mask it to appear circular for aesthetic consistency. Asynchronous loading might be considered if directory scanning is slow, but initial implementation can be synchronous.
-    -   The entire widget should function like a button, specifically a toggle button. We could achieve this by overriding mouse press events on the main widget or embedding a transparent `QPushButton`.
+    -   A text overlay is drawn directly onto the badge using `paintEvent` when the automation process is active for this person.
 -   **Layout & Design:** The avatar should be prominently displayed, with the name label positioned clearly below or beside it. Crucially, visual feedback must indicate its state (selected/deselected). This could be implemented by changing the background color, drawing a border, or overlaying a checkmark icon on the avatar when selected. The widget should have a fixed or constrained size to ensure uniformity in the Person Picker Card.
 -   **Interaction:** A simple click toggles the selected state. It needs to store its current state (selected/deselected) and the associated data (person's name, list of face file paths).
 
@@ -458,10 +472,13 @@ Here's a conceptual overview:
         *   Decrements the `_active_worker_count`.
         *   When the count reaches zero (all workers have emitted `finished`):
             *   Logs that all workers are done.
-            *   **Crucially, enters the two-loop shutdown sequence:**
-                1.  Iterate through all `_worker_threads` and call `t.quit()` on each running thread. This politely asks the thread's event loop to exit *after* processing any pending events (like the `worker.finished` signal).
-                2.  Iterate through all `_worker_threads` again and call `t.wait()` on each running thread. This *blocks* the manager's execution until the target thread has actually finished its `run()` method and terminated. Using `wait()` *after* `quit()` ensures we don't deadlock.
-                3.  Call `t.deleteLater()` on each thread after waiting to schedule it for safe deletion by Qt's event loop.
+            *   **Crucially, enters the correct thread shutdown sequence to prevent race conditions:**
+                *   **Problem:** Initially, `thread.finished.connect(thread.deleteLater)` was connected when starting threads. This caused a race condition: the last thread's `finished` signal could schedule its deletion *before* the manager's shutdown loop (`_on_worker_finished`) could safely interact with it (call `quit()` or `wait()`), leading to a `RuntimeError: wrapped C/C++ object of type QThread has been deleted`.
+                *   **Solution:** Remove the automatic `thread.deleteLater` connection during thread startup. The manager must explicitly control thread cleanup in the shutdown sequence.
+                *   **Correct Sequence:**
+                    1.  **Request Quit:** Iterate through all known `_worker_threads` and call `t.quit()` on each. This politely asks the thread's event loop to exit *after* processing any pending events. It's safe to call `quit()` even if the thread isn't running.
+                    2.  **Wait for Termination:** Iterate through all `_worker_threads` again and call `t.wait()` on each. This *blocks* the manager's execution (specifically, the main thread where the manager likely lives) until the target thread has actually finished its `run()` method and its event loop has terminated. Using `wait()` *after* `quit()` ensures the thread has fully stopped processing. A timeout should be used with `wait()` to prevent indefinite blocking if a thread hangs.
+                    3.  **Schedule Deletion:** *After* `wait()` confirms the thread has terminated (or timed out), call `t.deleteLater()` on the thread object. This safely schedules the C++ object for deletion by Qt's event loop when control returns to it, preventing the `RuntimeError`.
             *   Logs final status ("All tasks completed" or "Process stopped gracefully").
             *   Calls `_cleanup_after_stop`.
             *   Emits `process_finished` signal to the UI.
@@ -590,18 +607,18 @@ This section outlines the detailed steps required to implement the AI Face Swap 
     - [x] Calculate the corresponding index (key - 1).
     - [x] Get the `ResultImageDisplay` widget at that index from the layout.
     - [x] If it exists, call its `toggle_approval()` method.
+- [x] **Review Popup '-' Hotkey:** In `keyPressEvent`, if the key is '-':
+    - [x] Finds all *visible* images that are currently "checked".
+    - [x] Unchecks (deselects) each of these found images.
+    - [x] Hides these images from the dialog view.
+    - [x] Re-numbers the overlays of the remaining visible images sequentially (1, 2, 3,...).
 - [x] **Review Popup '+' Hotkey:** In `keyPressEvent`, if the key is '+':
-    - [x] Identifies all "checked" images in the current view.
-    - [x] Moves each checked image file from `<AI Root Directory>/Temp/` to `<AI Root Directory>/FaceSwapped/` (create `FaceSwapped/` if needed). Handle potential file errors.
-    - [x] Deletes all "unchecked" image files for this group from `<AI Root Directory>/Temp/`.
-    - [x] Signal the `ReviewManager` to remove the entry for the just-reviewed item (using its `original_source_path`).
-    - [x] Signal the `FaceReviewPage` to remove the corresponding visual item from the main queue list.
-    - [x] Attempt to find the *next* available review item in the `FaceReviewPage`'s list.
-    - [x] If a next item is found:
-        - [x] Clear the current content of the popup (title, displayed images).
-        - [x] Load and display the data (title, result images) for the *next* review item within the *same* popup window.
-    - [x] If no next item is found:
-        - [x] Close the dialog (`self.accept()` or `self.done(QDialog.Accepted)`).
+    - [x] Identifies all *currently visible* images that are "checked".
+    - [x] Moves each checked image file from `<AI Root Directory>/Temp/` to `<AI Root Directory>/FaceSwapped/`.
+    - [x] Deletes all *currently visible* images that are "unchecked" for this group from `<AI Root Directory>/Temp/`. (Note: Previously hidden images are not affected by this action).
+    - [x] Removes the corresponding thumbnail item from the Result Review Queue UI.
+    - [x] Closes the current popup.
+    - [x] Automatically selects the *next* item in the Result Review Queue (if any) and opens its Review Popup. If it was the last item, simply closes the popup.
 - [x] **Review Page Refresh:** Connect the `review_completed` signal from the dialog to the method on `FaceReviewPage` that scans `Temp/` and repopulates the `QListWidget`.
 - [x] **Review Page Item Removal:** Implement logic in `FaceReviewPage` to remove a specific `QListWidgetItem` (and its associated widget) when notified by the popup (or potentially by `ReviewManager` if it emits an `item_removed` signal).
 - [x] **Review Popup Navigation Hotkeys (Basic):** Implement Up/Down/PgUp/PgDn hotkey handling in `keyPressEvent`:

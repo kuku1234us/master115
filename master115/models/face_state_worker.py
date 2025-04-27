@@ -72,7 +72,7 @@ class FaceStateWorker(QObject):
     log_message = pyqtSignal(str)
     task_complete = pyqtSignal(SwapTaskData, str)
     task_failed = pyqtSignal(SwapTaskData, str)
-    finished = pyqtSignal()
+    finished = pyqtSignal(str)
     # ------------------------------------------- #
 
     def __init__(self,
@@ -235,7 +235,7 @@ class FaceStateWorker(QObject):
             self._log("info", "[run][cleanup]", "Performing final cleanup.")
             self._cleanup_driver()
             self._log("info", "[run][finished]", "Worker finished execution.")
-            self.finished.emit()
+            self.finished.emit(self.person.name)
             # --------------- #
 
     # --- Browser Management --- #
@@ -881,12 +881,14 @@ class FaceStateWorker(QObject):
             self._log("debug", step_id, "No WebDriver instance to clean up.")
 
     def _worker_id(self) -> str:
-        """Helper for shorter log messages."""
+        """Helper for shorter log messages. Uses format 'PersonName-FaceFilenameStem'."""
         face_filename_no_ext = Path(self.face.filename).stem
-        return f"{self.person.name}/{face_filename_no_ext}"
+        # Use hyphen instead of slash
+        return f"{self.person.name}-{face_filename_no_ext}"
 
     def _log(self, level: str, step_id: str, message: str, exc_info=False):
         """Helper for consistent logging."""
+        # Construct prefix using the updated _worker_id format
         log_prefix = f"[{self._worker_id()}]{step_id}"
         full_message = f"{log_prefix} {message}"
 

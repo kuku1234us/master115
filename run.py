@@ -2,8 +2,11 @@
 """
 Entry point script to run the Movie Python application.
 """
+
 import sys
 import os
+from qt_base_app.app import create_application, run_application
+from master115.ui.main_window import MainWindow # Import our new MainWindow
 
 # If running from the project root, this might not be necessary,
 # but it ensures the modules can be found if run from elsewhere.
@@ -11,8 +14,9 @@ project_root = os.path.abspath(os.path.dirname(__file__))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from qt_base_app.app import create_application, run_application
-from master115.ui.main_window import MainWindow # Import our new MainWindow
+# from qt_base_app.app import create_application, run_application
+# Remove the moved import from here
+# from master115.ui.main_window import MainWindow # Import our new MainWindow
 
 def main():
     """Main entry point for the Movie Python application."""

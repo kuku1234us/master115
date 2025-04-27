@@ -540,7 +540,7 @@ class FaceSwapWorker(QObject):
                             face_stem = Path(self.face.filename).stem
                             source_stem = Path(source_image.filename).stem
                             output_filename = f"{self.person.name} {face_stem} {source_stem}.jpg"
-                            output_path = self.temp_output_dir / output_filename
+                    output_path = self.temp_output_dir / output_filename
                             output_path.parent.mkdir(parents=True, exist_ok=True)
 
                             image_stream = io.BytesIO(webp_bytes)

@@ -9,6 +9,7 @@ from .pages.pixnova_page import PixnovaPage # Import the new page
 # --- Import new AI pages ---
 from .pages.face_dashboard_page import FaceDashboardPage
 from .pages.face_review_page import FaceReviewPage
+from .pages.facereports_page import FaceReportsPage # Import the new page
 # ---------------------------
 
 # --- Import Browser ---
@@ -99,6 +100,7 @@ class MainWindow(BaseWindow):
         # --- Instantiate AI pages ---
         face_dashboard_widget = FaceDashboardPage(self)
         face_review_widget = FaceReviewPage(self)
+        face_reports_widget = FaceReportsPage(self) # Instantiate the new page
         # ----------------------------
 
         # Add pages to the stack using the IDs from the YAML config
@@ -109,6 +111,7 @@ class MainWindow(BaseWindow):
         # --- Add AI pages ---
         self.add_page('face_dashboard', face_dashboard_widget)
         self.add_page('face_review', face_review_widget)
+        self.add_page('face_reports', face_reports_widget) # Add the new page
         # ---------------------
 
     # --- Browser Control Methods --- #

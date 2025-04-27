@@ -3,52 +3,84 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QHBoxLayout, QVBoxLayout, QSizePolicy # Changed to QHBoxLayout for main layout
 )
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QRect # Added QRect
-from PyQt6.QtGui import QPixmap, QColor, QPainter, QBrush, QPen, QBitmap, QPainterPath # Added QPainterPath
+from PyQt6.QtGui import QPixmap, QColor, QPainter, QBrush, QPen, QBitmap, QPainterPath, QFont # Added QPainterPath and QFont
+from typing import Optional
 
-# --- Helper Function --- #
-def make_round_pixmap(src: QPixmap, size: int) -> QPixmap:
-    """
-    Return `src` scaled/cropped to a *smooth* circular pixmap of `size`×`size`.
-    """
-    # Scale first (SmoothTransformation keeps the photo crisp)
-    # Note: Scaling is slightly different here than in the user's _load_avatar example
-    # We assume the input `src` pixmap might not be square yet.
-    # Let's crop to square first like in the existing _load_avatar logic
-    src_size = min(src.width(), src.height())
-    src_rect = QRect(
-       (src.width() - src_size) // 2,
-       (src.height() - src_size) // 2,
-       src_size,
-       src_size
-    )
-    cropped_src = src.copy(src_rect)
+# Import the new Avatar component
+from .avatar import Avatar
+
+# Need manager to check if running
+from ...models.faceswap_manager import FaceSwapManager
+
+# --- Helper Classes --- #
+class ProgressOverlay(QWidget):
+    """A widget that displays a progress counter on top of everything."""
     
-    scaled = cropped_src.scaled(
-        size, size,
-        Qt.AspectRatioMode.IgnoreAspectRatio, # Ignore aspect as it's square
-        Qt.TransformationMode.SmoothTransformation
-    )
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setText(None)  # No text initially
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)  # Let mouse events pass through
+        self.hide()  # Initially hidden
+        
+    def setText(self, text: Optional[str]):
+        """Set the text to display, or hide the overlay if None."""
+        self._text = text
+        if text is None:
+            self.hide()
+        else:
+            self.show()
+            self.raise_()  # Ensure this widget is on top
+            self.update()
+            
+    def paintEvent(self, event):
+        """Draw the overlay with text."""
+        if not self._text:
+            return
+            
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Fully opaque black background with white text
+        overlay_color = QColor(0, 0, 0, 255)  # Black, fully opaque
+        text_color = QColor(240, 240, 240, 255)  # White/light grey text
+        
+        # Calculate text dimensions 
+        font = QFont()
+        font.setPointSize(8)
+        painter.setFont(font)
+        text_metrics = painter.fontMetrics()
+        text_rect = text_metrics.boundingRect(self._text)
+        
+        # Size the overlay box
+        box_height = text_rect.height() + 4  # Padding
+        box_width = text_rect.width() + 8  # Padding
+        
+        # Position centered in the widget
+        box_x = (self.width() - box_width) / 2
+        box_y = (self.height() - box_height) / 2
+        
+        overlay_rect = QRect(int(box_x), int(box_y), int(box_width), int(box_height))
+        
+        # Draw background box
+        painter.setBrush(QBrush(overlay_color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(overlay_rect, 3, 3)  # Rounded corners
+        
+        # Draw text
+        painter.setPen(QPen(text_color))
+        painter.drawText(overlay_rect, Qt.AlignmentFlag.AlignCenter, self._text)
 
-    result = QPixmap(size, size)
-    result.fill(Qt.GlobalColor.transparent) # Ensure transparent background
-
-    painter = QPainter(result)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-    clip = QPainterPath()
-    clip.addEllipse(0, 0, size, size)
-    painter.setClipPath(clip)
-
-    painter.drawPixmap(0, 0, scaled) # Draw the scaled image onto the clipped transparent pixmap
-    painter.end()
-    return result
-# --------------------- #
+# --- Remove Helper Function --- #
+# def make_round_pixmap(src: QPixmap, size: int) -> QPixmap:
+#    ...
+# ---------------------------- #
 
 class PersonBadge(QWidget): # Changed inheritance from QFrame to QWidget
     """A widget representing a person with an avatar and name, acting as a toggle button."""
     toggled = pyqtSignal(str, bool) # Emit person_name and is_selected state
+    context_menu_requested = pyqtSignal(str) # Emit person_name when clicked during run
 
-    def __init__(self, person_name: str, first_image_path: str = None, parent=None):
+    def __init__(self, person_name: str, first_image_path: str = None, swap_manager: FaceSwapManager = None, parent=None):
         super().__init__(parent)
         self.setObjectName("personBadge")
         # Remove frame specific stuff
@@ -57,7 +89,9 @@ class PersonBadge(QWidget): # Changed inheritance from QFrame to QWidget
 
         self.person_name = person_name
         self.first_image_path = first_image_path
+        self.swap_manager = swap_manager
         self.is_selected = False
+        self._progress_text: Optional[str] = None # To store overlay text like "X/Y"
 
         # Enable background styling for the widget itself
         self.setAutoFillBackground(True)
@@ -75,19 +109,10 @@ class PersonBadge(QWidget): # Changed inheritance from QFrame to QWidget
         layout.setSpacing(8)
         # layout.setAlignment(Qt.AlignmentFlag.AlignVCenter) # Align items vertically centered
 
-        # Avatar Label
-        self.avatar_label = QLabel()
-        self.avatar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Avatar Widget (Replaced QLabel)
         self.avatar_size = 32 # Smaller avatar size like example
-        self.avatar_label.setFixedSize(self.avatar_size, self.avatar_size)
-        # Initial placeholder styling
-        self.avatar_label.setStyleSheet(f"""
-            QLabel {{
-                background-color: #cccccc; /* Placeholder grey */
-                border-radius: {self.avatar_size // 2}px; /* Make it circular */
-                border: 1px solid #aaaaaa;
-            }}
-        """)
+        self.avatar_widget = Avatar(size=self.avatar_size, parent=self)
+        # Avatar component handles its own placeholder and loading
 
         # Name Label
         self.name_label = QLabel(self.person_name)
@@ -95,10 +120,13 @@ class PersonBadge(QWidget): # Changed inheritance from QFrame to QWidget
         # Adjust font size/weight if needed
         self.name_label.setStyleSheet("font-size: 10pt; background-color: transparent; border: none;")
 
-        layout.addWidget(self.avatar_label)
+        layout.addWidget(self.avatar_widget)
         layout.addWidget(self.name_label)
         # layout.addStretch() # No stretch needed for this style
 
+        # Create the overlay widget (added last to be on top)
+        self.progress_overlay = ProgressOverlay(self)
+        
         self.setLayout(layout)
 
         # Size policy: Fixed height, expanding width (or fixed width? Let's try fixed first)
@@ -108,40 +136,32 @@ class PersonBadge(QWidget): # Changed inheritance from QFrame to QWidget
         self.setMinimumWidth(120)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+    def resizeEvent(self, event):
+        """Ensure the overlay covers the entire widget when resized."""
+        super().resizeEvent(event)
+        if hasattr(self, 'progress_overlay'):
+            self.progress_overlay.setGeometry(self.rect())
+
     def _load_avatar(self):
-        """Loads, scales, and masks the avatar image using make_round_pixmap."""
-        # Clear previous pixmap and styles potentially affected by it
-        self.avatar_label.setPixmap(QPixmap())
-        default_placeholder_style = f"background-color: #cccccc; border-radius: {self.avatar_size // 2}px; border: 1px solid #aaaaaa;"
-        error_placeholder_style = f"background-color: #ffcccc; border-radius: {self.avatar_size // 2}px;"
-
-        if not self.first_image_path:
-            print(f"[WARN] No image path for {self.person_name}")
-            self.avatar_label.setStyleSheet(default_placeholder_style)
-            self.avatar_label.setText("")
-            return
-
-        pixmap = QPixmap(self.first_image_path)
-        if pixmap.isNull():
-            print(f"[WARN] Failed load image: {self.first_image_path}")
-            self.avatar_label.setStyleSheet(error_placeholder_style)
-            self.avatar_label.setText("?")
-            return
-
-        # --- Use the helper function --- #
-        rounded_pixmap = make_round_pixmap(pixmap, self.avatar_size)
-        # ------------------------------- #
-
-        self.avatar_label.setPixmap(rounded_pixmap)
-        # Clear background/border styles to show the pixmap
-        self.avatar_label.setStyleSheet(f"border-radius: {self.avatar_size // 2}px; border: none; background: transparent;")
-        self.avatar_label.setText("") # Clear error text if any
+        """Sets the image for the avatar widget."""
+        # Delegate image loading and display to the Avatar widget
+        self.avatar_widget.setImage(self.first_image_path)
 
     def mousePressEvent(self, event):
-        """Handle mouse clicks to toggle the selected state."""
+        """Handle mouse clicks to toggle the selected state OR request context menu."""
         if event.button() == Qt.MouseButton.LeftButton:
-            self.toggle_selection()
-        # Don't call super().mousePressEvent(event) for QWidget if we handle it fully
+            is_running = self._is_automation_running()
+            print(f"[DEBUG] PersonBadge '{self.person_name}' clicked. Automation running: {is_running}")
+            
+            if is_running:
+                # If running, emit signal to request context menu
+                print(f"[DEBUG] Emitting context_menu_requested for '{self.person_name}'")
+                self.context_menu_requested.emit(self.person_name)
+            else:
+                # If not running, toggle selection as usual
+                self.toggle_selection()
+        # Allow right-click context menus if needed in the future by calling super
+        # super().mousePressEvent(event)
 
     def toggle_selection(self):
         """Toggle the selection state and update visuals."""
@@ -182,17 +202,36 @@ class PersonBadge(QWidget): # Changed inheritance from QFrame to QWidget
             """)
 
         # Re-apply specific avatar styling AFTER main widget style is set
-        if self.avatar_label.pixmap() and not self.avatar_label.pixmap().isNull():
-             # If pixmap exists, ensure transparent background and no border
-             self.avatar_label.setStyleSheet(f"border-radius: {self.avatar_size // 2}px; border: none; background: transparent;")
+        # NO LONGER NEEDED - Avatar handles its own styling
+        # if self.avatar_widget.pixmap() and not self.avatar_widget.pixmap().isNull():
+        #      ...
+        # else:
+        #      ...
+
+    def _is_automation_running(self) -> bool:
+        """Check if the automation process is running via the stored manager."""
+        # Use the stored manager instance
+        if self.swap_manager:
+            return self.swap_manager.is_running()
         else:
-             # Re-apply placeholder/error style if no valid pixmap
-             current_avatar_style = self.avatar_label.styleSheet() 
-             # Check if it was previously set to error style
-             if "ffcccc" in current_avatar_style: 
-                  self.avatar_label.setStyleSheet(f"background-color: #ffcccc; border-radius: {self.avatar_size // 2}px;")
-             else: # Apply default placeholder style
-                  self.avatar_label.setStyleSheet(f"background-color: #cccccc; border-radius: {self.avatar_size // 2}px; border: 1px solid #aaaaaa;")
+            # Log an error or warning if manager is missing?
+            # print(f"[WARN] PersonBadge {self.person_name} has no swap_manager instance.")
+            return False
+
+    # --- Methods to control the overlay --- #
+    def set_progress_text(self, text: Optional[str]):
+        """Sets the text for the progress overlay (e.g., "X/Y" or None to hide)."""
+        self._progress_text = text
+        self.progress_overlay.setText(text)
+        # Make sure the overlay is properly sized and positioned
+        if text is not None:
+            self.progress_overlay.setGeometry(self.rect())
+            self.progress_overlay.raise_()  # Ensure it's on top
+
+    def show_progress_overlay(self, show: bool, text: str = ""):
+        """Convenience method to show/hide the overlay."""
+        self.set_progress_text(text if show else None)
+    # -------------------------------------- #
 
     # --- Getters/Setters --- #
     def set_selected(self, selected: bool):

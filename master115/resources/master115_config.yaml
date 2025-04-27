@@ -42,6 +42,10 @@ sidebar:
           title: "Face Review"
           icon: "fa5s.images" # Example icon
           page: "FaceReviewPage"
+        - id: "face_reports" # New entry for Face Reports
+          title: "Face Reports"
+          icon: "fa5s.chart-bar" # Example icon
+          page: "FaceReportsPage" # Links to the new page class
     - title: "Settings" # Moved Settings section to the end
       items:
         - id: "preferences"

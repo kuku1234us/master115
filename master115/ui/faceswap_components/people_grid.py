@@ -1,35 +1,39 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from PyQt6.QtWidgets import (
-    QWidget, QGridLayout, QLabel
+    QWidget, QGridLayout, QLabel, QFrame, QApplication
 )
-from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer
 
 from qt_base_app.components.base_card import BaseCard
 from qt_base_app.theme import ThemeManager
-from qt_base_app.models import Logger
+from qt_base_app.models import Logger, SettingsManager, SettingType
 from .person_badge import PersonBadge
-from ...models.people_manager import PeopleManager
-from ...models.face_swap_models import PersonData # For type hinting
+from ...models.people_manager import PeopleManager, PersonData
+from ...models.faceswap_manager import FaceSwapManager
 
 class PeopleGrid(QWidget):
     """A widget displaying a grid of selectable PersonBadges."""
     # Signals
     selection_changed = pyqtSignal(list) # Emits list of selected person names
+    filter_requested_for_person = pyqtSignal(str) # Relays request for filter menu
 
-    def __init__(self, parent=None):
+    def __init__(self, swap_manager: FaceSwapManager, parent=None):
         super().__init__(parent)
         self.setObjectName("PeopleGridWidget")
         self.logger = Logger.instance()
         self.caller = "PeopleGrid"
         self.theme = ThemeManager.instance()
         self.people_manager = PeopleManager.instance()
+        self.swap_manager = swap_manager
+        self.settings = SettingsManager.instance()
 
-        self.person_badges: Dict[str, PersonBadge] = {} # {person_name: badge_widget}
-        
+        self._grid_populated = False # Track if grid has been populated
+        self._info_label: Optional[QLabel] = None # Label for messages like "No persons"
+        self._badge_widgets: Dict[str, PersonBadge] = {} # Cache badge widgets by name
+
         self._setup_ui()
-        # Defer loading until shown or explicitly called
-        # self.load_persons()
+        self._connect_manager_signals() # Connect signals from the swap_manager
 
     def _setup_ui(self):
         """Set up the container card and grid layout."""
@@ -66,6 +70,18 @@ class PeopleGrid(QWidget):
         
         self.setLayout(main_layout)
 
+    def _connect_manager_signals(self):
+        """Connect signals from the provided FaceSwapManager to update badge overlays."""
+        # Ensure the manager instance exists and is of the correct type
+        if self.swap_manager and isinstance(self.swap_manager, FaceSwapManager):
+            self.logger.debug(self.caller, "Connecting to provided FaceSwapManager signals.")
+            self.swap_manager.process_started[dict].connect(self._on_process_started)
+            self.swap_manager.person_progress_updated[str, int, int].connect(self._on_person_progress_updated)
+            self.swap_manager.process_finished.connect(self._on_process_finished_or_killed)
+            self.swap_manager.process_killed.connect(self._on_process_finished_or_killed)
+        else:
+            self.logger.error(self.caller, "Invalid or missing FaceSwapManager instance provided. Cannot connect signals.")
+
     def _clear_person_grid(self):
         """Removes all widgets from the person grid layout."""
         while self.person_grid_layout.count():
@@ -73,7 +89,7 @@ class PeopleGrid(QWidget):
             widget = item.widget()
             if widget:
                 widget.deleteLater()
-        self.person_badges.clear() # Clear the tracking dictionary
+        self._badge_widgets.clear() # Clear the tracking dictionary
 
     def load_persons(self, force_rescan: bool = False):
         """Scans for persons using PeopleManager and populates the grid."""
@@ -125,13 +141,19 @@ class PeopleGrid(QWidget):
             if first_image is None:
                 self.logger.warn(self.caller, f"Could not get first image for {person_name}, badge might be empty.")
 
-            # --- Create ACTUAL PersonBadge --- #
-            badge = PersonBadge(person_name=person_name, first_image_path=first_image)
+            # --- Create ACTUAL PersonBadge, pass swap_manager --- #
+            badge = PersonBadge(
+                person_name=person_name,
+                first_image_path=first_image,
+                swap_manager=self.swap_manager
+            )
             badge.toggled.connect(self._on_badge_toggled) # Connect signal
-            # ---------------------------------- #
+            # Connect the new context menu request signal
+            badge.context_menu_requested.connect(self.filter_requested_for_person)
+            # -------------------------------------------------- #
 
             self.person_grid_layout.addWidget(badge, row, col)
-            self.person_badges[person_name] = badge # Store reference
+            self._badge_widgets[person_name] = badge # Store reference
 
             col += 1
             if col >= max_cols:
@@ -152,16 +174,22 @@ class PeopleGrid(QWidget):
 
     def get_selected_person_names(self) -> List[str]:
         """Returns a list of names of the currently selected persons."""
-        return [name for name, badge in self.person_badges.items() if badge.is_selected]
+        return [name for name, badge in self._badge_widgets.items() if badge.is_selected]
 
     def set_enabled(self, enabled: bool):
-        """Enables or disables interaction with all badges in the grid."""
-        # Consider disabling the card itself for visual feedback
-        self.person_picker_card.setEnabled(enabled)
-        # Also disable individual badges to prevent interaction
-        for badge in self.person_badges.values():
-            badge.setEnabled(enabled)
-        self.logger.debug(self.caller, f"PeopleGrid enabled state set to: {enabled}")
+        """Enables or disables interaction with the grid's container card."""
+        # ONLY disable the container card for visual feedback.
+        # Do NOT disable individual badges, as they need clicks for context menu.
+        # self.person_picker_card.setEnabled(enabled)  # Commenting out this line to allow child widget interaction
+        
+        # IMPORTANT: Do not disable the individual badges when the grid is disabled
+        # because we still need them to receive mouse events for context menus
+        # When automation is running and the grid is disabled, make sure badges stay enabled
+        if not enabled:
+            for badge in self._badge_widgets.values():
+                badge.setEnabled(True)  # Ensure badges remain clickable even when grid is disabled
+                
+        self.logger.debug(self.caller, f"PeopleGrid container card enabled state set to: {enabled}")
         
     def refresh_persons(self):
         """Forces a rescan and reloads the person badges."""
@@ -177,8 +205,47 @@ class PeopleGrid(QWidget):
         # Only load if the grid is currently empty, to avoid reloading on every tab switch
         # unless the underlying data might have changed. 
         # A manual refresh button or signal might be better.
-        if not self.person_badges:
+        if not self._badge_widgets:
             self.logger.debug(self.caller, "PeopleGrid shown and empty, loading persons.")
             self.load_persons()
         else:
             self.logger.debug(self.caller, "PeopleGrid shown, already populated.") 
+
+    # --- Slots for FaceSwapManager Signals --- #
+
+    @pyqtSlot(dict)
+    def _on_process_started(self, totals_dict: dict):
+        """Shows initial progress overlays when the process starts."""
+        self.logger.info(self.caller, f"Process started, received totals: {totals_dict}")
+        for person_name, total in totals_dict.items():
+            if person_name in self._badge_widgets:
+                 self.logger.debug(self.caller, f"Setting initial progress for {person_name}: 0/{total}")
+                 badge = self._badge_widgets[person_name]
+                 # Only show overlay if the badge is selected (visual consistency)
+                 if badge.is_selected:
+                    badge.set_progress_text(f"0/{total}")
+                 else:
+                     badge.set_progress_text(None) # Ensure non-selected don't show it
+            else:
+                 self.logger.warn(self.caller, f"Received total for unknown person badge: {person_name}")
+
+    @pyqtSlot(str, int, int)
+    def _on_person_progress_updated(self, person_name: str, completed: int, total: int):
+        """Updates the progress overlay for a specific person."""
+        if person_name in self._badge_widgets:
+            # self.logger.debug(self.caller, f"Updating progress for {person_name}: {completed}/{total}")
+            badge = self._badge_widgets[person_name]
+            # Update text regardless of current selection state (in case selection changed mid-run?)
+            badge.set_progress_text(f"{completed}/{total}")
+        else:
+             # This might happen if a worker finishes after the grid was cleared/reloaded
+             self.logger.warn(self.caller, f"Received progress update for unknown/removed person badge: {person_name}")
+
+    @pyqtSlot()
+    def _on_process_finished_or_killed(self):
+        """Clears all progress overlays when the process ends."""
+        self.logger.info(self.caller, "Process finished or killed, clearing progress overlays.")
+        for badge in self._badge_widgets.values():
+            badge.set_progress_text(None)
+        # Optionally re-enable the grid if it was disabled? UI updates handled by FaceDashboardPage.
+    # ---------------------------------------- # 

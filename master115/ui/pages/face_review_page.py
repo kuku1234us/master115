@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSlot
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 # Framework imports
 from qt_base_app.models import SettingsManager, Logger, SettingType
@@ -117,8 +117,6 @@ class FaceReviewPage(QWidget):
 
         # --- Connect to ReviewManager signal --- #
         self.review_manager.review_item_added.connect(self._on_review_item_added)
-        # Connect removed signal
-        self.review_manager.review_item_removed.connect(self._handle_review_item_removed)
         # -------------------------------------- #
 
         self.setLayout(layout)
@@ -263,29 +261,26 @@ class FaceReviewPage(QWidget):
     def _handle_review_processed(self, person_name: str, original_source_path: str, approved_paths: List[str], unapproved_paths: List[str]):
         """Receives review decision from dialog and calls ReviewManager."""
         self.logger.debug(self.caller, f"Review decision received for {person_name}/{Path(original_source_path).name}")
-        
+
         # Call the manager to process the decision and handle files/JSON
-        ReviewManager.instance().process_review_decision(
+        success = ReviewManager.instance().process_review_decision(
             person_name,
             original_source_path,
             approved_paths,
             unapproved_paths
         )
-        # ReviewManager will emit review_item_removed if successful, 
-        # which will trigger _handle_review_item_removed to update the UI.
-        
-        # --- REMOVE premature dialog closing --- #
-        # # Close the dialog after processing
-        # if self.current_review_dialog:
-        #     self.current_review_dialog.accept() # Close the dialog cleanly
-        # --------------------------------------- #
+
+        # If manager successfully processed and removed the item from state,
+        # update the UI immediately.
+        if success:
+             self.logger.debug(self.caller, "ReviewManager processed successfully, updating UI.")
+             self._remove_review_item_widget(person_name, original_source_path)
+        else:
+             # Manager failed to process (e.g., item not found in JSON)
+             self.logger.error(self.caller, f"ReviewManager failed to process decision for {person_name}/{original_source_path}. UI not updated.")
+             # Optionally: Inform user, maybe keep dialog open?
 
     @pyqtSlot(str, str)
-    def _handle_review_item_removed(self, person_name: str, original_source_path: str):
-        """Slot called when a review item is removed (processed or deleted)."""
-        self.logger.debug(self.caller, f"Signal received: review_item_removed for {person_name}/{original_source_path}")
-        self._remove_review_item_widget(person_name, original_source_path)
-
     def _remove_review_item_widget(self, person_name: str, original_source_path: str):
         """Finds and removes the QListWidgetItem associated with the given source path."""
         item_to_remove = None
@@ -324,147 +319,48 @@ class FaceReviewPage(QWidget):
         count = self.review_queue_list.count()
         if count == 0:
             self.logger.info(self.caller, "Review queue empty after removal.")
-            # Close the dialog if it's open and the queue is now empty
             if self.current_review_dialog and self.current_review_dialog.isVisible():
                 self.logger.debug(self.caller, "Closing review dialog as queue is empty.")
-                self.current_review_dialog.close() # Use close() instead of accept()
-            return
-            
-        # Calculate the next index (handles wrap-around or staying at current index)
-        next_row = removed_row_index % count 
-        
-        next_item = self.review_queue_list.item(next_row)
-        if next_item:
-            self.logger.info(self.caller, f"Navigating to next available item at index {next_row}")
-            # Select the item in the list
-            self.review_queue_list.setCurrentItem(next_item) 
-            # Trigger the standard click handler to open/update the dialog for this item
-            self._on_review_item_clicked(next_item)
-        else:
-            # Should not happen if count > 0
-            self.logger.error(self.caller, f"Could not find next item at index {next_row} despite count={count}.")
-            # Attempt to close the dialog as a fallback
-            if self.current_review_dialog and self.current_review_dialog.isVisible():
                 self.current_review_dialog.close()
+            return
+
+        next_row = removed_row_index % count # Stay at current or wrap
+        next_item = self.review_queue_list.item(next_row)
+
+        if next_item:
+             self.logger.info(self.caller, f"Navigate After Approve: Displaying item at index {next_row}.")
+             self._display_review_item(next_item)
+        else:
+            self.logger.error(self.caller, f"_navigate_to_next_available: Could not find item at index {next_row} despite count={count}.")
 
     def _on_review_item_clicked(self, item: QListWidgetItem):
         """Opens the ReviewPopupDialog for the clicked item."""
-        if self.current_review_dialog and self.current_review_dialog.isVisible():
-            self.logger.warn(self.caller, "Review dialog is already open.")
-            self.current_review_dialog.raise_() # Bring existing dialog to front
-            self.current_review_dialog.activateWindow()
-            return
-
-        # --- Retrieve Identifiers from the item --- #
-        person_name = item.data(Qt.ItemDataRole.UserRole + 1)
-        original_source_path = item.data(Qt.ItemDataRole.UserRole + 2)
-        
-        if not person_name or not original_source_path:
-            self.logger.error(self.caller, f"Missing person_name or original_source_path in clicked item data.")
-            return
-        # -------------------------------------------- #
-
-        # --- Fetch full details from ReviewManager --- #
-        review_details = ReviewManager.instance().get_review_details(person_name, original_source_path)
-        if not review_details:
-            self.logger.error(self.caller, f"Could not retrieve review details from ReviewManager for {person_name}/{original_source_path}")
-            # Optionally inform user via status bar
-            return
-        result_image_paths = review_details.get('result_image_paths', [])
-        # -------------------------------------------- #
-        
-        # --- Check if dialog is already open --- #
-        if self.current_review_dialog and self.current_review_dialog.isVisible():
-            # Dialog IS open, update its content instead of creating a new one
-            self.logger.info(self.caller, f"Updating existing review dialog for: {person_name} / {Path(original_source_path).name}")
-            self.current_review_dialog.load_review_item(
-                person_name=person_name,
-                original_source_path=original_source_path,
-                result_image_paths=result_image_paths
-            )
-            self.current_review_dialog.raise_()
-            self.current_review_dialog.activateWindow()
-            # Ensure list selection matches (might be redundant if navigation already did it)
-            self.review_queue_list.setCurrentItem(item)
-            return # Don't proceed to create a new dialog
-        # ---------------------------------------- #
-
-        # --- Dialog is NOT open, proceed to create it --- #
-        self.logger.info(self.caller, f"Opening new review dialog for: Person='{person_name}', Source='{original_source_path}'")
-
-        # --- Get AI Root Directory --- #
-        ai_root_path = self.settings.get(
-            SettingsManager.AI_ROOT_DIR_KEY, 
-            None, # SettingsManager handles default/validation
-            SettingType.PATH
-        )
-        if not ai_root_path:
-             self.logger.error(self.caller, "Cannot open review dialog, AI Root Dir is invalid.")
-             return
-        ai_root_dir_str = str(ai_root_path) # Convert Path to string for dialog
-        # ----------------------------- #
-
-        # Create and show the popup dialog
-        # Pass individual arguments now
-        self.current_review_dialog = ReviewPopupDialog(
-            person_name=person_name,
-            original_source_path=original_source_path,
-            result_image_paths=result_image_paths,
-            ai_root_dir_str=ai_root_dir_str,
-            parent=self # Set parent to manage lifecycle
-        )
-        
-        # Connect dialog signals to handler methods
-        self.current_review_dialog.review_processed.connect(self._handle_review_processed)
-        self.current_review_dialog.request_next_item.connect(self._navigate_next_item)
-        self.current_review_dialog.request_previous_item.connect(self._navigate_previous_item)
-        self.current_review_dialog.finished.connect(
-            self._on_dialog_finished, Qt.ConnectionType.QueuedConnection
-        )
-        
-        self.current_review_dialog.show()
-        self.current_review_dialog.activateWindow() # Ensure it has focus
-        self.current_review_dialog.raise_() # Bring it to the front
-
-        # Select the item in the list view when opening the dialog
-        self.review_queue_list.setCurrentItem(item)
+        # Simply delegate to the centralized display method
+        self._display_review_item(item)
 
     def _navigate_next_item(self):
-        """Navigates to the next item in the list and opens its review dialog."""
+        """Handles navigation request to the next item."""
         current_row = self.review_queue_list.currentRow()
-        next_row = (current_row + 1) % self.review_queue_list.count() # Wrap around
-        if self.review_queue_list.count() > 0:
-            next_item = self.review_queue_list.item(next_row)
-            if next_item:
-                 # Close existing dialog first if open
-                if self.current_review_dialog and self.current_review_dialog.isVisible():
-                    # We need to accept (close) it cleanly before opening the next
-                    # Using accept() assumes it won't trigger unwanted side-effects
-                    self.current_review_dialog.accept() 
-                    # Let the finished signal clear the reference
-                
-                # Set the selection *before* potentially triggering the dialog
-                self.review_queue_list.setCurrentRow(next_row) 
-                # Simulate a click to open the dialog for the new item
-                # Using itemClicked signal might be cleaner than calling _on_review_item_clicked directly
-                self._on_review_item_clicked(next_item) 
-                # self.review_queue_list.itemClicked.emit(next_item) # Alternative if direct call causes issues
+        count = self.review_queue_list.count()
+        if count == 0:
+            return # Nothing to navigate to
+        next_row = (current_row + 1) % count
+
+        next_item = self.review_queue_list.item(next_row)
+        if next_item:
+            self._display_review_item(next_item)
 
     def _navigate_previous_item(self):
-        """Navigates to the previous item in the list and opens its review dialog."""
+        """Handles navigation request to the previous item."""
         current_row = self.review_queue_list.currentRow()
-        prev_row = (current_row - 1 + self.review_queue_list.count()) % self.review_queue_list.count() # Wrap around
-        if self.review_queue_list.count() > 0:
-            prev_item = self.review_queue_list.item(prev_row)
-            if prev_item:
-                # Close existing dialog first if open
-                if self.current_review_dialog and self.current_review_dialog.isVisible():
-                    self.current_review_dialog.accept() 
-                
-                self.review_queue_list.setCurrentRow(prev_row)
-                # Simulate a click
-                self._on_review_item_clicked(prev_item)
-                # self.review_queue_list.itemClicked.emit(prev_item) # Alternative
+        count = self.review_queue_list.count()
+        if count == 0:
+            return # Nothing to navigate to
+        prev_row = (current_row - 1 + count) % count
+
+        prev_item = self.review_queue_list.item(prev_row)
+        if prev_item:
+            self._display_review_item(prev_item)
 
     @pyqtSlot(int)
     def _on_dialog_finished(self, result_code: int):
@@ -487,3 +383,87 @@ class FaceReviewPage(QWidget):
             self.current_review_dialog.close() # Close the dialog gracefully
         super().closeEvent(event)
     # ------------- #
+
+    # --- Helper Methods --- #
+
+    def _get_data_for_item(self, item: QListWidgetItem) -> Optional[Tuple[str, str, List[str]]]:
+        """Retrieves and validates data needed to display a review item."""
+        person_name = item.data(Qt.ItemDataRole.UserRole + 1)
+        original_source_path = item.data(Qt.ItemDataRole.UserRole + 2)
+
+        if not person_name or not original_source_path:
+            self.logger.error(self.caller, f"Missing person_name or original_source_path in item data: {item.text() if item else 'None'}")
+            return None
+
+        review_details = ReviewManager.instance().get_review_details(person_name, original_source_path)
+        if not review_details:
+            self.logger.error(self.caller, f"Could not retrieve review details for {person_name}/{original_source_path}")
+            return None
+
+        result_image_paths = review_details.get('result_image_paths', [])
+        return person_name, original_source_path, result_image_paths
+
+    def _display_review_item(self, item: QListWidgetItem):
+        """Handles displaying the given item, either by updating or creating the dialog."""
+        if not item:
+            self.logger.warn(self.caller, "_display_review_item called with None item.")
+            return
+
+        item_data = self._get_data_for_item(item)
+        if item_data is None:
+            # Error already logged in _get_data_for_item
+            return
+
+        person_name, original_source_path, result_paths = item_data
+
+        # Check if dialog exists and is visible
+        if self.current_review_dialog and self.current_review_dialog.isVisible():
+            # Update existing dialog
+            self.logger.info(self.caller, f"Updating existing dialog for: {person_name} / {Path(original_source_path).name}")
+            try:
+                self.current_review_dialog.load_review_item(
+                    person_name=person_name,
+                    original_source_path=original_source_path,
+                    result_image_paths=result_paths
+                )
+            except Exception as e:
+                 self.logger.error(self.caller, f"Error calling load_review_item: {e}", exc_info=True)
+
+            self.current_review_dialog.raise_()
+            self.current_review_dialog.activateWindow()
+        else:
+            # Create new dialog
+            self.logger.info(self.caller, f"Opening new dialog for: {person_name} / {Path(original_source_path).name}")
+
+            ai_root_path = self.settings.get(
+                SettingsManager.AI_ROOT_DIR_KEY,
+                None, # SettingsManager handles default/validation
+                SettingType.PATH
+            )
+            if not ai_root_path:
+                 self.logger.error(self.caller, "Cannot open review dialog, AI Root Dir is invalid.")
+                 return
+            ai_root_dir_str = str(ai_root_path)
+
+            self.current_review_dialog = ReviewPopupDialog(
+                person_name=person_name,
+                original_source_path=original_source_path,
+                result_image_paths=result_paths,
+                ai_root_dir_str=ai_root_dir_str,
+                parent=self # Set parent to manage lifecycle
+            )
+
+            # Connect signals
+            self.current_review_dialog.review_processed.connect(self._handle_review_processed)
+            self.current_review_dialog.request_next_item.connect(self._navigate_next_item)
+            self.current_review_dialog.request_previous_item.connect(self._navigate_previous_item)
+            self.current_review_dialog.finished.connect(
+                self._on_dialog_finished, Qt.ConnectionType.QueuedConnection
+            )
+
+            self.current_review_dialog.show()
+            self.current_review_dialog.activateWindow()
+            self.current_review_dialog.raise_()
+
+        # Ensure the list selection matches the displayed item
+        self.review_queue_list.setCurrentItem(item)

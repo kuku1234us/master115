@@ -1,5 +1,7 @@
+import os
+import json
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TypedDict
 from qt_base_app.models import SettingsManager, Logger, SettingType
 from .face_swap_models import PersonData, FaceData
 
@@ -168,6 +170,38 @@ class PeopleManager:
         self.logger.warn(self.caller, f"Person '{person_name}' not found in cache.")
         return None
         
+    def find_face_image_path(self, person_name: str, face_stem: str) -> Optional[str]:
+        """Finds the full path to an original face image given the person and stem.
+        
+        Searches for common image extensions (.jpg, .png, .jpeg, .webp).
+        
+        Args:
+            person_name: The name of the person.
+            face_stem: The filename stem of the face image (e.g., '01', 'profile').
+            
+        Returns:
+            The full path to the image file if found, otherwise None.
+        """
+        ai_root = self._get_ai_root()
+        if not ai_root:
+            return None
+        
+        person_dir = Path(ai_root) / "Faces" / person_name
+        if not person_dir.is_dir():
+            self.logger.warn(self.caller, f"Person directory not found: {person_dir}")
+            return None
+        
+        supported_extensions = [".jpg", ".png", ".jpeg", ".webp"]
+        
+        for ext in supported_extensions:
+            potential_path = person_dir / f"{face_stem}{ext}"
+            if potential_path.is_file():
+                self.logger.debug(self.caller, f"Found face image: {potential_path}")
+                return str(potential_path)
+        
+        self.logger.warn(self.caller, f"Could not find image for stem '{face_stem}' in {person_dir}")
+        return None
+
 # Example usage (optional, for testing)
 if __name__ == '__main__':
     # This requires the app's QSettings to be initialized, might not run standalone easily

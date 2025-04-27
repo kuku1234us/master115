@@ -259,11 +259,14 @@ class ReviewPopupDialog(QDialog):
     def keyPressEvent(self, event: QKeyEvent):
         """Handle hotkey presses."""
         key = event.key()
+        self.logger.debug(self.caller, f"keyPressEvent received key: {key} (Text: '{event.text()}')") # Log ALL key presses
 
         # TODO: Implement hotkey logic (0-9, +, Up/Down/PgUp/PgDn)
         if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
+             self.logger.debug(self.caller, f"Digit key {key - Qt.Key.Key_0} pressed, calling _handle_digit_key...")
              self._handle_digit_key(key - Qt.Key.Key_0)
         elif key == Qt.Key.Key_0:
+             self.logger.debug(self.caller, "Digit key 0 pressed, calling _handle_digit_key...")
              self._handle_digit_key(10) # Handle 0 as 10th item if needed
         elif key == Qt.Key.Key_Plus:
              self._handle_plus_key()
@@ -277,6 +280,10 @@ class ReviewPopupDialog(QDialog):
              # Emit signal to inform FaceReviewPage to navigate to next item
              self.request_next_item.emit()
              # Don't close dialog - FaceReviewPage handles navigation
+        elif key == Qt.Key.Key_Minus:
+            self._handle_minus_key()
+        elif key == Qt.Key.Key_Enter or key == Qt.Key.Key_Return:
+            self._handle_enter_key()
         elif key == Qt.Key.Key_Escape:
             self.reject() # Close on Escape
         else:
@@ -286,12 +293,86 @@ class ReviewPopupDialog(QDialog):
 
     def _handle_digit_key(self, number: int):
         """Toggles the approval state for the image corresponding to the digit."""
+        self.logger.debug(self.caller, f"_handle_digit_key called for number: {number}")
+        # Only toggle visible items
         index = number - 1 # Convert 1-based number to 0-based index
-        if 0 <= index < len(self.result_displays):
-            self.logger.debug(self.caller, f"Toggling approval for image #{number}")
-            self.result_displays[index].toggle_approval()
+        # Find the nth *visible* widget
+        visible_widgets = [w for w in self.result_displays if w.isVisible()]
+        self.logger.debug(self.caller, f"Found {len(visible_widgets)} visible widgets.")
+        if 0 <= index < len(visible_widgets):
+             target_widget = visible_widgets[index]
+             self.logger.debug(self.caller, f"Attempting to toggle approval for visible widget at index {index} (Path: {target_widget.get_image_path().name})")
+             target_widget.toggle_approval()
         else:
-            self.logger.debug(self.caller, f"Digit key {number} pressed, but no corresponding image found.")
+             self.logger.debug(self.caller, f"Index {index} is out of range for visible widgets (0 to {len(visible_widgets)-1}).")
+
+    def _handle_minus_key(self):
+        """Hides and deselects all currently approved images."""
+        self.logger.debug(self.caller, "'-' key pressed. Hiding approved items.")
+        items_hidden = False
+        for widget in self.result_displays:
+            # Process only visible widgets that are currently approved
+            if widget.isVisible() and widget.get_approval_state():
+                self.logger.debug(self.caller, f"Hiding and deselecting: {widget.get_image_path().name}")
+                widget.toggle_approval() # Deselect (turn off checkmark)
+                widget.setVisible(False)
+                items_hidden = True
+
+        if items_hidden:
+            # Update layout if items were hidden
+            QApplication.processEvents() # Allow visibility changes to process
+            self._update_image_container_size() # Recalculate container size
+            # --- Re-number visible items --- #
+            visible_widgets = [w for w in self.result_displays if w.isVisible()]
+            self.logger.debug(self.caller, f"Re-numbering {len(visible_widgets)} visible items.")
+            for new_index, widget in enumerate(visible_widgets):
+                 widget.set_display_number(new_index + 1)
+            # ----------------------------- #
+        else:
+             self.logger.debug(self.caller, "No visible approved items found to hide.")
+
+    def _handle_enter_key(self):
+        """Hides non-approved images and deselects the ones that remain visible."""
+        self.logger.debug(self.caller, "Enter key pressed. Hiding non-approved & deselecting remaining.")
+        items_processed = False
+        visible_widgets_after = []
+
+        for widget in self.result_displays:
+            if widget.isVisible():
+                if not widget.get_approval_state():
+                    # Hide non-approved visible items
+                    self.logger.debug(self.caller, f"Hiding non-approved image: {widget.get_image_path().name}")
+                    widget.setVisible(False)
+                    items_processed = True
+                else:
+                    # Deselect approved visible items
+                    self.logger.debug(self.caller, f"Deselecting initially approved image: {widget.get_image_path().name}")
+                    widget.set_approval_state(False)
+                    visible_widgets_after.append(widget) # Add to list for re-numbering
+                    # No need to set items_processed = True here, as just deselecting doesn't require layout update
+
+        if items_processed: # Only update layout etc. if items were actually hidden
+            # Update layout if items were hidden
+            QApplication.processEvents() # Allow visibility changes to process
+            self._update_image_container_size() # Recalculate container size
+
+            # --- Re-number remaining visible items --- #
+            self.logger.debug(self.caller, f"Re-numbering {len(visible_widgets_after)} visible items.")
+            for new_index, widget in enumerate(visible_widgets_after):
+                 widget.set_display_number(new_index + 1)
+            # --------------------------------------- #
+        else:
+             self.logger.debug(self.caller, "No visible non-approved items found to hide.")
+             # Even if nothing was hidden, we might still need to deselect approved items
+             if not visible_widgets_after:
+                 # Check if there were any visible items initially that were approved
+                 processed_deselection = False
+                 for widget in self.result_displays:
+                      if widget.isVisible() and widget.get_approval_state():
+                           widget.set_approval_state(False)
+                           processed_deselection = True
+                 if processed_deselection:
+                      self.logger.debug(self.caller, "Deselected all visible approved items (no items hidden).")
 
     def _handle_plus_key(self):
         """Handles the '+' key press: Gathers decisions and emits signal."""
@@ -354,7 +435,7 @@ class ReviewPopupDialog(QDialog):
                          original_source_path: str, 
                          result_image_paths: List[str]):
         """Updates the dialog with data for a new review item."""
-        self.logger.debug(self.caller, f"Loading new review item: {person_name} / {Path(original_source_path).name}")
+        self.logger.debug(self.caller, f"****************** Loading new review item: {person_name} / {Path(original_source_path).name}")
         
         # Update internal data storage
         self.person_name = person_name

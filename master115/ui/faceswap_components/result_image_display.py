@@ -3,10 +3,18 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSizePolicy
 from PyQt6.QtCore import Qt, QSize, QRectF
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QResizeEvent, QMouseEvent
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QResizeEvent, QMouseEvent, QPainterPath
 
 from qt_base_app.models import Logger
 from qt_base_app.theme import ThemeManager
+
+# Imports for bottom overlay avatar
+from ...models.people_manager import PeopleManager
+from .avatar import make_round_pixmap
+
+# Constants for overlay drawing
+OVERLAY_AVATAR_SIZE = 32 # Match PersonBadge size
+OVERLAY_PADDING = 4
 
 class ResultImageDisplay(QWidget):
     """
@@ -31,6 +39,7 @@ class ResultImageDisplay(QWidget):
         self.image_path = image_path
         self.index = index # Store 0-based index
         self.is_approved = False # Initial state
+        self._display_number = self.index + 1 # Store the initial display number
 
         self._original_pixmap: QPixmap | None = None
         self._scaled_pixmap: QPixmap | None = None
@@ -121,7 +130,10 @@ class ResultImageDisplay(QWidget):
             font = QFont("Arial", int(digit_diameter * 0.6))
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(digit_rect, Qt.AlignmentFlag.AlignCenter, str(self.index + 1)) # index is 0-based
+            painter.drawText(digit_rect, Qt.AlignmentFlag.AlignCenter, str(self._display_number))
+
+            # 2. Face Image Name Overlay (Bottom-Center)
+            self._draw_bottom_overlay(painter, widget_rect)
 
         else:
             # Draw placeholder text if image failed to load
@@ -135,6 +147,85 @@ class ResultImageDisplay(QWidget):
             if self._original_pixmap is None and self.image_path.exists() and self.image_path.is_file():
                 error_text = "Error" # Generic error if file exists but load failed
             painter.drawText(widget_rect, Qt.AlignmentFlag.AlignCenter, error_text)
+
+    def _draw_bottom_overlay(self, painter: QPainter, widget_rect: QRectF):
+        """Draws the bottom overlay with avatar and face stem."""
+        # Extract Person Name and Face Stem from the result filename
+        full_filename = self.image_path.stem
+        filename_parts = full_filename.split(" ")
+        person_name = filename_parts[0] if len(filename_parts) > 0 else None
+        face_stem = filename_parts[1] if len(filename_parts) > 1 else full_filename # Fallback to full stem
+
+        # Setup colors and font
+        label_bg_color = QColor(0, 0, 0, 180)  # Black with 70% opacity
+        label_text_color = QColor(255, 255, 255, 255)  # White, fully opaque
+        placeholder_avatar_color = QColor("#555555")
+        
+        filename_font = QFont("Arial", 18) # Restore original size (18pt)
+        filename_font.setBold(True)
+        painter.setFont(filename_font)
+        font_metrics = painter.fontMetrics()
+        text_width = font_metrics.horizontalAdvance(face_stem)
+        text_height = font_metrics.height()
+
+        # Calculate total width needed for avatar, padding, text, padding
+        avatar_width_with_padding = OVERLAY_AVATAR_SIZE + OVERLAY_PADDING
+        total_content_width = avatar_width_with_padding + text_width
+        total_overlay_width = total_content_width + 2 * OVERLAY_PADDING # Add padding on both sides
+        # Calculate overlay height
+        overlay_height = max(OVERLAY_AVATAR_SIZE, text_height) + 2 * OVERLAY_PADDING
+
+        # Position at bottom center, moved up to avoid scrollbar AND shifted further up
+        scrollbar_clearance = 20  # Extra pixels to move up to clear the scrollbar
+        bg_rect_x = (widget_rect.width() - total_overlay_width) / 2 # Center horizontally
+        # Subtract overlay height, clearance, and an additional half overlay height
+        bg_rect_y = widget_rect.height() - 1.5*overlay_height - scrollbar_clearance
+        bg_rect = QRectF(bg_rect_x, bg_rect_y, total_overlay_width, overlay_height)
+
+        # Draw background
+        painter.setBrush(QBrush(label_bg_color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(bg_rect, 3, 3)  # Slightly rounded corners
+
+        # --- Draw Avatar --- #
+        avatar_x = bg_rect.left() + OVERLAY_PADDING
+        avatar_y = bg_rect.top() + (bg_rect.height() - OVERLAY_AVATAR_SIZE) / 2 # Center vertically
+        
+        original_face_path = None
+        if person_name: # Only try if we could parse person name
+            try:
+                original_face_path = PeopleManager.instance().find_face_image_path(person_name, face_stem)
+            except Exception as find_err:
+                 self.logger.error(self.caller, f"Error finding original face path for {person_name}/{face_stem}: {find_err}")
+                 original_face_path = None # Ensure placeholder is drawn
+
+        if original_face_path:
+            try:
+                original_pixmap = QPixmap(original_face_path)
+                if original_pixmap.isNull(): raise ValueError("Failed to load pixmap")
+                avatar_pixmap = make_round_pixmap(original_pixmap, OVERLAY_AVATAR_SIZE)
+                painter.drawPixmap(int(avatar_x), int(avatar_y), avatar_pixmap)
+            except Exception as e:
+                self.logger.debug(self.caller, f"Could not load avatar for {person_name}/{face_stem}: {e}")
+                original_face_path = None # Flag to draw placeholder
+        
+        if not original_face_path: # Draw placeholder if path not found or load failed
+            painter.setBrush(placeholder_avatar_color)
+            painter.setPen(Qt.PenStyle.NoPen)
+            path = QPainterPath()
+            path.addEllipse(QRectF(avatar_x, avatar_y, OVERLAY_AVATAR_SIZE, OVERLAY_AVATAR_SIZE))
+            painter.drawPath(path)
+            painter.setBrush(Qt.BrushStyle.NoBrush) # Reset brush
+
+        # --- Draw Text --- #
+        text_x = avatar_x + OVERLAY_AVATAR_SIZE + OVERLAY_PADDING
+        text_y = bg_rect.top() + (bg_rect.height() - text_height) / 2 # Center vertically
+        text_rect = QRectF(text_x, text_y, text_width, text_height)
+        
+        painter.setPen(QPen(label_text_color))
+        painter.setFont(filename_font) # Ensure font is set for text
+        # Align text left and center vertically within its calculated area
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, face_stem)
 
     def sizeHint(self) -> QSize:
         """Provide a size hint based on the scaled pixmap."""
@@ -163,6 +254,13 @@ class ResultImageDisplay(QWidget):
         self.logger.debug(self.caller, f"Approval state for {self.image_path.name} toggled to: {self.is_approved}")
         self.update() # Redraw to show/hide checkmark
 
+    def set_approval_state(self, approved: bool):
+        """Explicitly sets the approval state and triggers a repaint if changed."""
+        if self.is_approved != approved:
+            self.is_approved = approved
+            self.logger.debug(self.caller, f"Approval state for {self.image_path.name} set to: {self.is_approved}")
+            self.update() # Redraw if state changed
+
     def get_approval_state(self) -> bool:
         """Returns the current approval state."""
         return self.is_approved
@@ -170,6 +268,13 @@ class ResultImageDisplay(QWidget):
     def get_image_path(self) -> Path:
         """Returns the path of the image being displayed."""
         return self.image_path
+
+    def set_display_number(self, number: int):
+        """Updates the number displayed in the overlay."""
+        if self._display_number != number:
+            self.logger.debug(self.caller, f"Updating display number for {self.image_path.name} to {number}")
+            self._display_number = number
+            self.update() # Trigger repaint with the new number
 
     # TODO: Add method to report approval state
     # TODO: Override paintEvent for overlays OR manage layered QLabel widgets 

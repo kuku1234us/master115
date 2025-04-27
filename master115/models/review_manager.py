@@ -22,9 +22,6 @@ class ReviewManager(QObject):
     # Signal emitted when a new item is successfully added and ready for review
     # Payload is the dictionary representing the added item
     review_item_added = pyqtSignal(dict)
-    # Signal emitted when an item is successfully processed and removed
-    # Payload: person_name (str), original_source_path_str (str)
-    review_item_removed = pyqtSignal(str, str)
 
     _instance = None
     _lock = threading.Lock()
@@ -258,23 +255,9 @@ class ReviewManager(QObject):
         Returns:
             bool: True if an item was found and removed, False otherwise.
         """
-        removed = False
-        with self._lock:
-            # This method is ambiguous now, as multiple items might share the same original_source_path.
-            # We need person_name to uniquely identify.
-            self.logger.warn(self.caller, f"DEPRECATED method remove_pending_review called for {original_source_path_str}. No action taken. Use process_review_decision.")
-            # initial_count = len(self._pending_reviews)
-            # self._pending_reviews = [
-            #     item for item in self._pending_reviews
-            #     if item.get('original_source_path') != original_source_path_str
-            # ]
-            # if len(self._pending_reviews) < initial_count:
-            #     self.logger.info(self.caller, f"Removed entry for {Path(original_source_path_str).name} from pending reviews.")
-            #     self._save_data()
-            #     removed = True
-            # else:
-            #      self.logger.warn(self.caller, f"Attempted to remove non-existent entry for {Path(original_source_path_str).name}.")
-        return removed
+        # Directly return False as this method is deprecated
+        self.logger.warn(self.caller, f"DEPRECATED method remove_pending_review called for {original_source_path_str}. No action taken.")
+        return False
 
     def process_review_decision(self, person_name: str, original_source_path_str: str, approved_paths: List[str], unapproved_paths: List[str]):
         """
@@ -289,7 +272,7 @@ class ReviewManager(QObject):
             ai_root_path = self._get_ai_root_path()
             if not ai_root_path:
                 self.logger.error(self.caller, f"Cannot process review decision for {original_source_path_str}: AI Root path invalid.")
-                return
+                return False
             face_swapped_dir = ai_root_path / "FaceSwapped"
             temp_dir = ai_root_path / "Temp"
 
@@ -298,7 +281,7 @@ class ReviewManager(QObject):
                 face_swapped_dir.mkdir(parents=True, exist_ok=True)
             except OSError as e:
                 self.logger.error(self.caller, f"Could not ensure FaceSwapped directory {face_swapped_dir} exists: {e}")
-                return # Cannot proceed if destination doesn't exist
+                return False # Cannot proceed if destination doesn't exist
 
             file_op_errors = 0
             processed_item_name = Path(original_source_path_str).name
@@ -352,17 +335,14 @@ class ReviewManager(QObject):
             else:
                  self.logger.warn(self.caller, f"Tried to remove entry for {processed_item_name}, but it was not found in list.")
 
-            # 5. Emit signal if item was successfully removed from list
-            if item_removed:
-                # Emit with person_name as well
-                self.review_item_removed.emit(person_name, original_source_path_str)
-                if file_op_errors > 0:
-                     self.logger.warn(self.caller, f"Review processing complete for {processed_item_name} with {file_op_errors} file errors. Item removed from queue.")
-                else:
-                     self.logger.info(self.caller, f"Review processing complete for {processed_item_name}. Item removed from queue.")
+            # 5. Log completion status
+            if file_op_errors > 0:
+                self.logger.warn(self.caller, f"Review processing complete for {processed_item_name} with {file_op_errors} file errors. Item removed from state.")
             else:
-                 # This case might indicate a logic error or race condition if the item *should* have been there
-                 self.logger.error(self.caller, f"Review decision processed for {processed_item_name}, but item was not found in the list for removal! File ops completed with {file_op_errors} errors.")
+                self.logger.info(self.caller, f"Review processing complete for {processed_item_name}. Item removed from state.")
+
+            # Return True because the item was found and removed from the internal list
+            return True
 
     def get_pending_reviews(self) -> List[Dict[str, Any]]:
         """Returns a copy of the list of items pending review."""

@@ -76,11 +76,12 @@ class IconButton(QPushButton):
 
         # Calculate button size based on icon size and padding, unless fixed_size is given
         if fixed_size:
-            self.setFixedSize(fixed_size)
+            # Use fixed_size for both width and height
+            self.setFixedSize(fixed_size, fixed_size)
             # Adjust policy if fixed size is set
             self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            button_width = fixed_size.width()
-            button_height = fixed_size.height()
+            button_width = fixed_size
+            button_height = fixed_size
         else:
              # Calculate desired button dimension
              button_dimension = icon_size.width() + (2 * style_padding)
